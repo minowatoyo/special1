@@ -1,0 +1,8 @@
+# 動作確認した版（Python 3.13.18, 2026-11-09 に PyPI から導入）。これより古い版でも動く可能性が高いが未検証。
+pandas==3.1.1
+numpy==2.5.4
+pytest==9.2.0
+TA-Lib==0.8.3          # 照合テスト用（なくても chartlib 自体は動く。テストは skip される）
+matplotlib==3.11.2     # デモ描画用
+mplfinance==0.12.10b0  # デモ描画用
+six==1.17.0            # mplfinance 0.12.10b0 が import するが依存宣言していないため明示
