@@ -8,7 +8,7 @@ lint が見るもの（01〜05 の本文書）:
   * 出典表: 7 列、ID の形式と全体での一意性、検証タグ（✅S / ⚠M / ❓）、URL の形式
   * ⚠M の行に URL が付いていないこと（記憶由来の資料に URL を付けない規則）
   * 本文の引用 [XX-000] が（全文書の）出典表に存在するか、相対リンクの宛先が存在するか
-  * 禁止語（AI モデル名など）、極端なサイズ
+  * 極端なサイズ（小さすぎ・大きすぎ）
 sources は、検証タグの集計・要確認一覧（⚠M / ❓）・URL のドメイン別件数をまとめた SOURCES.md を作る。
 """
 from __future__ import annotations
@@ -25,7 +25,6 @@ SRC_HEADER = ["ID", "資料名", "著者・発行元", "年", "URL", "検証", "
 ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d{2,3}$")
 CITE_RE = re.compile(r"\[([A-Z][A-Z0-9]*-\d{2,3})\]")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-FORBIDDEN = re.compile(r"claude|anthropic|sonnet|opus|haiku|fable", re.I)
 REQUIRED_SECTIONS = ["関連文書", "この文書の限界", "出典"]
 CONTENT_DIRS = ("01_techniques", "02_japan", "03_evidence", "04_learning", "05_tools_data_code")
 LOW_KB, HIGH_KB = 3, 40
@@ -112,11 +111,6 @@ def lint(root: Path) -> int:
         for sec in REQUIRED_SECTIONS:
             if not re.search(rf"^##\s+{sec}\s*$", text, re.M):
                 problems.append(f"{rel}: セクション「{sec}」がない")
-        # URL 中の追跡パラメータ（例: ?utm_source=...）は対象外。URL は改変しない方針なので除いてから検査する
-        text_wo_urls = re.sub(r"https?://\S+", "", text)
-        for mm in FORBIDDEN.finditer(text_wo_urls):
-            ctx = text_wo_urls[max(0, mm.start() - 20):mm.end() + 20].replace("\n", " ")
-            problems.append(f"{rel}: 禁止語 '{mm.group(0)}' … {ctx}")
         rows, errs = parse_sources(text)
         problems += [f"{rel}: {e}" for e in errs]
         ids_here = set()

@@ -32,17 +32,17 @@
 | `03_evidence/01_academic_literature.md` | 134 | 119 | 15 | 0 |
 | `03_evidence/02_methodology_behavioral_japan_ml.md` | 75 | 70 | 5 | 0 |
 | `04_learning/01_books_english.md` | 42 | 42 | 0 | 0 |
-| `04_learning/02_books_japanese.md` | 16 | 3 | 13 | 0 |
+| `04_learning/02_books_japanese.md` | 20 | 7 | 13 | 0 |
 | `04_learning/03_online_courses_and_sites.md` | 23 | 15 | 8 | 0 |
 | `04_learning/04_organizations_journals_certifications.md` | 25 | 11 | 14 | 0 |
 | `04_learning/05_study_roadmap.md` | 4 | 4 | 0 | 0 |
-| `05_tools_data_code/01_charting_platforms_and_screeners.md` | 14 | 11 | 3 | 0 |
-| `05_tools_data_code/02_data_sources.md` | 27 | 26 | 1 | 0 |
+| `05_tools_data_code/01_charting_platforms_and_screeners.md` | 24 | 21 | 3 | 0 |
+| `05_tools_data_code/02_data_sources.md` | 29 | 28 | 1 | 0 |
 | `05_tools_data_code/03_python_libraries.md` | 36 | 36 | 0 | 0 |
 | `05_tools_data_code/04_javascript_and_other_libraries.md` | 40 | 39 | 1 | 0 |
 | `05_tools_data_code/05_backtesting_frameworks.md` | 24 | 23 | 1 | 0 |
-| **合計（延べ）** | **888** | **802** | **86** | **0** |
-| **一意な出典（ID で重複排除）** | **875** | **790** | **85** | **0** |
+| **合計（延べ）** | **904** | **818** | **86** | **0** |
+| **一意な出典（ID で重複排除）** | **891** | **806** | **85** | **0** |
 
 ## 人手での確認を推奨する資料（⚠M / ❓）
 
@@ -215,7 +215,7 @@
 
 | ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
 |---|---|---|---|---|---|
-| TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | ⚠M | 記憶のみ。数値は記載せず、02_japan/04 と JPX 公式で要確認 |
+| TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | ⚠M | 記憶のみ。呼値・値幅の数値は記載せず、02_japan/04 と JPX 公式で要確認 |
 
 ## URL のドメイン別件数
 
@@ -224,20 +224,20 @@
 | consensus.app | 278 |
 | github.com | 65 |
 | chartschool.stockcharts.com | 19 |
-| jpx.co.jp | 17 |
+| jpx.co.jp | 19 |
 | luxalgo.com | 15 |
 | oanda.jp | 13 |
-| matsui.co.jp | 11 |
+| matsui.co.jp | 12 |
 | en.wikipedia.org | 11 |
 | wiley-vch.de | 11 |
 | daiwa.jp | 9 |
 | pypi.org | 9 |
 | nomura.co.jp | 9 |
 | thepatternsite.com | 8 |
-| rakuten-sec.co.jp | 6 |
+| rakuten-sec.co.jp | 7 |
+| kabu.com | 7 |
 | tradingview.com | 5 |
 | indexes.nikkei.co.jp | 5 |
-| kabu.com | 5 |
 | jpx-jquants.com | 5 |
 | smbcnikko.co.jp | 4 |
 | media.moneyforward.com | 4 |
@@ -260,6 +260,7 @@
 | gaitame.com | 2 |
 | crexgroup.com | 2 |
 | barchartsolutions.atlassian.net | 2 |
+| info.monex.co.jp | 2 |
 | search.sbisec.co.jp | 2 |
 | myforex.com | 2 |
 | media.paypay-sec.co.jp | 2 |
@@ -274,6 +275,10 @@
 | goodreads.com | 2 |
 | openlibrary.org | 2 |
 | press.princeton.edu | 2 |
+| opac.lib.hit-u.ac.jp | 2 |
+| wowma.jp | 2 |
+| s.minkabu.jp | 2 |
+| minkabu.jp | 2 |
 | pandas-datareader.readthedocs.io | 2 |
 | stockcharts.com:443 | 1 |
 | babypips.com | 1 |
@@ -307,7 +312,6 @@
 | corporatefinanceinstitute.com | 1 |
 | macroption.com | 1 |
 | amibroker.com | 1 |
-| info.monex.co.jp | 1 |
 | jioinc.jp | 1 |
 | kraken.com | 1 |
 | steema.com | 1 |
@@ -354,6 +358,7 @@
 | cmtassociation.org | 1 |
 | metatrader5.com | 1 |
 | interactivebrokers.github.io | 1 |
+| rakuten-bank.co.jp | 1 |
 | api.edinet-fsa.go.jp | 1 |
 | release.tdnet.info | 1 |
 | e-stat.go.jp | 1 |

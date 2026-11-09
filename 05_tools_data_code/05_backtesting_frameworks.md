@@ -6,8 +6,8 @@
 
 ## 1. 読み方
 
-- 「PyPI 実測」は `https://pypi.org/pypi/<package>/json` の値（2026-11-09 取得）。README・docstring の記述は PyPI 配布物の README と、サンドボックスに導入したパッケージのソースから読んだもの（✅S）。実行結果は本セッションのサンドボックス（Linux x86_64、4 vCPU、Python 3.13.18）での 1 回の観測である [TL-423]。
-- 「日本株対応のしやすさ」は本稿の判断で、根拠は表中に示した機能の有無に限る。呼値・値幅制限・売買単位はどの基盤にも組込み機能が見つからなかったため、自作の層が必要になる前提で比較している。
+- 確認日: 2026-11-09（版・ライセンス・制度は要公式確認）。「PyPI 実測」は `https://pypi.org/pypi/<package>/json` の値。README・docstring の記述は PyPI 配布物の README と、サンドボックスに導入したパッケージのソースから読んだもの（✅S）。実行結果は本セッションのサンドボックス（Linux x86_64、4 vCPU、Python 3.13.18）での 1 回の観測である [TL-423]。
+- 「日本株への適合」は本稿の判断で、根拠は表中に示した機能の有無に限る。呼値と値幅制限の組込み機能は、ソースを検索した backtesting.py・bt・vectorbt でも、README を読んだ他の基盤でも見つからなかった。売買単位に近い機能は vectorbt の `size_granularity` だけだった（未検証）。自作の層が必要になる前提で比較している。
 
 ## 2. 比較表
 
@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|---|
 | backtesting.py | `init()` で指標をベクトル計算し `next()` を 1 本ずつ呼ぶバー駆動。1 回の `Backtest` は 1 本の OHLC(V) DataFrame が対象 | README は「Blazing fast」と主張。実測 33〜50 ms／回（3,000 本）、386 通りのループで 12.5 秒 | 成行は**次の足の始値**で約定（`trade_on_close=True` で当日終値）。`size` は 1 未満で資金比率、1 以上で株数だが**100 株の倍数には丸められない**。手数料は割合・(固定, 割合)・関数。呼値・値幅の機能は見当たらない | 0.6.6（2026-07-22）、Python>=3.9。pandas 3.1.1 で動作するが `Pandas4Warning` | AGPL-3.0（classifier は AGPLv3+）。ネットワーク提供時の扱いは法務確認 | [TL-401] |
 | backtrader | イベント駆動（Cerebro）。複数データ・複数戦略・複数時間足、ブローカー模擬、スリッページ、Cheat-on-Close／Open、取引カレンダー、サイザーを README が列挙 | 未計測 | 手数料体系・サイザー・カレンダーの枠組みがあり、100 株単位などは自作 Sizer で表現できる見込み（未検証）。ライブ接続は Interactive Brokers・Oanda・Visual Chart（README） | **1.9.78.123（2023-04-19）、約 3.6 年更新なし**。Python 要件未指定 | GPLv3+ | [TL-402] |
-| vectorbt | ベクトル化（NumPy／Numba、任意の Rust エンジン `vectorbt-rust`）。パラメータ掃引向け | 実測: 初回 約 4 秒（JIT）、以後 約 5 ms／回、386 通りの掃引 0.18 秒（2 回目）。初回は 3.6 秒（JIT 含む） | `from_signals` は価格を渡さないと**シグナルと同じ足の終値**で約定（実測）。次足始値にするには `price=` に始値、シグナルは `shift(1)` | 1.2.0（2026-10-19）、Python>=3.11、numpy>=2.4.6・pandas>=3.0.3 | README: Apache 2.0 with Commons Clause（fair-code）。PyPI の license 欄は空。有償版 PRO は別製品 | [TL-403] |
+| vectorbt | ベクトル化（NumPy／Numba、任意の Rust エンジン `vectorbt-rust`）。パラメータ掃引向け | 実測: 初回 約 4 秒（JIT）、以後 約 5 ms／回。386 通りの掃引は 2 回目 0.18 秒、初回 3.6〜5.2 秒（JIT 含む、実行ごとにばらつき） | `from_signals` は価格を渡さないと**シグナルと同じ足の終値**で約定（実測）。次足始値にするには `price=` に始値、シグナルは `shift(1)`。注文に `size_granularity`（数量の刻み。docstring: 1.0 で整数株）・`slippage`・`fixed_fees`・`min_size`／`max_size` があり、100 株刻みの指定も可能なはずだが未検証 | 1.2.0（2026-10-19）、Python>=3.11、numpy>=2.4.6・pandas>=3.0.3 | README: Apache 2.0 with Commons Clause（fair-code）。PyPI の license 欄は空。有償版 PRO は別製品 | [TL-403] |
 | bt | ポートフォリオ層。Algo（実行頻度・銘柄選択・ウェイト・リバランス）を連結、戦略を木構造に入れ子可能 | 未計測 | 株数は整数に丸める（`integer_positions` 既定 True）が 100 株単位は標準にない。手数料は `fn(数量, 価格)` か、平方根型・Almgren-Chriss 型の `CostModel`（ソース記載） | 1.4.1（2026-10-10）、Python>=3.9、cp313 wheel あり | MIT | [TL-404] |
 | zipline-reloaded | イベント駆動（`initialize`／`handle_data`）。データバンドルの取り込みが前提 | 未計測 | 取引カレンダーは exchange_calendars（XTKS あり）に依存。日本株のバンドルは自作。README の例は 100 株単位の `order_target` | 3.2.1（2026-10-25）、Python>=3.11。**README は保守モード（新機能は ML4T Backtest へ）**。**pandas<3.0** | Apache-2.0 | [TL-405] |
 | ml4t-backtest | 概要は「設定可能な約定・会計・リスクを持つイベント駆動」。zipline-reloaded の README が新規案件での評価を推奨 | 未計測 | 未確認 | 0.2.0（2026-10-22）、Python>=3.12 | MIT | [TL-406] |
@@ -59,7 +59,7 @@ pandas 3.1.1／numpy 2.5.4 で合成データに対して実行できること�
 
 ## 5. 日本株の制度に結びつく設計上の落とし穴
 
-制度の詳細・数値は [../02_japan/04_tse_market_rules_and_chart_effects.md](../02_japan/04_tse_market_rules_and_chart_effects.md) と JPX の公式資料で確認すること。以下の制度面の記述は記憶に基づく（⚠M、要公式確認）[TL-424]。
+制度の詳細・数値は [../02_japan/04_tse_market_rules_and_chart_effects.md](../02_japan/04_tse_market_rules_and_chart_effects.md) と JPX の公式資料で確認すること。以下の制度面の記述は筆者の記憶に基づく（⚠M、要公式確認）[TL-424]。取引時間（2024-11 の延長）、売買単位 100 株（2018 年）、権利落ち、年末年始の休業については、同文書が公式案内等の検索結果を根拠に記している。
 
 ### 5.1 先読み（look-ahead）
 
@@ -86,7 +86,7 @@ pandas 3.1.1／numpy 2.5.4 で合成データに対して実行できること�
 
 - **呼値**: 価格帯ごとに刻みが決まる。逆指値・利確の価格は刻みに丸める。損切り幅を「2%」と決めても、低位株では刻みで実効幅が大きく変わる。
 - **値幅制限**: 前日終値などを基準とする制限値幅があり、上限（ストップ高）・下限（ストップ安）に張り付くと約定しない。高値がストップ高で終わった日の買い、ストップ安で終わった日の売りは「約定不能日」として除外するか確率的に処理する。
-- **売買単位**: 全上場銘柄が 100 株単位に統一されたと記憶する（2018 年、⚠M）。株数は `floor(資金 / (価格 × 100)) × 100` で算出し、小資金では**最低投資金額**が銘柄ユニバースの制約になる。実測と docstring のとおり、backtesting.py の `size`（1 未満）や bt の整数丸めは 100 株の倍数に揃えない。
+- **売買単位**: 全上場銘柄が 100 株単位に統一されたと記憶する（2018 年、⚠M）。株数は `floor(資金 / (価格 × 100)) × 100` で算出し、小資金では**最低投資金額**が銘柄ユニバースの制約になる。実測と docstring のとおり、backtesting.py の `size`（1 未満）や bt の整数丸めは 100 株の倍数に揃えない。vectorbt は `size_granularity` で刻みを指定できる（docstring、100 株での動作は未検証）。
 
 ### 5.5 調整後価格・配当・上場廃止
 
@@ -124,7 +124,7 @@ pandas 3.1.1／numpy 2.5.4 で合成データに対して実行できること�
 
 - Web 検索の上限に達したため、各基盤の公式ドキュメントと日本株向けの事例は確認していない。記述は PyPI のメタデータ・README、導入したパッケージのソース、サンドボックス実測に限る。
 - 速度は合成データ 1 銘柄 3,000 本・4 vCPU での参考値で、約定規則が異なる基盤間の厳密な比較ではない。backtrader・bt・zipline-reloaded・LEAN・PyBroker・NautilusTrader は未計測、zipline-reloaded・LEAN・NautilusTrader・PyBroker・backtrader は導入と実行を試していない。
-- 東証の制度（取引時間、売買単位、値幅制限、呼値、配当落ちの基準値段）は記憶に基づき、数値は記載していない。最新の制度は JPX の公式資料で確認すること。
+- 東証の制度（取引時間、売買単位、値幅制限、呼値、配当落ちの基準値段）は記憶に基づく。売買単位 100 株、2018 年の統一、2024 年 11 月の大引け延長を除き、呼値と値幅制限の具体的な数値は記載していない。最新の制度は JPX の公式資料で確認すること。
 - 学術論文は検索結果の書誌・要旨のみを確認し、本文は読んでいない。日本市場での追試結果は扱っていない。
 - ライセンスの解釈（AGPL・Commons Clause・LGPL の適用範囲）は法的助言ではない。
 
@@ -155,5 +155,5 @@ pandas 3.1.1／numpy 2.5.4 で合成データに対して実行できること�
 | TL-421 | Technical Trading Revisited: False Discoveries, Persistence Tests, and Transaction Costs | P. Bajgrowicz, O. Scaillet／Journal of Financial Economics | 2012 | — | ✅S | DOI 10.1016/j.jfineco.2012.06.001。論文検索の書誌・要旨のみ確認 |
 | TL-422 | No pain, no gain: You should always incorporate trading costs for a bias-free evaluation of trading rule overperformance | D. Anghel／Economics Letters | 2022 | — | ✅S | DOI 10.1016/j.econlet.2022.110584。論文検索の書誌・要旨のみ確認 |
 | TL-423 | サンドボックス実測（pip install・合成データでの最小実行・pip dry-run・タイミング計測） | 本調査（Linux x86_64、Python 3.13.18） | 2026 | — | ✅S | 実行ログは作業領域のみでリポジトリには含めない。1 回の観測 |
-| TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | — | ⚠M | 記憶のみ。数値は記載せず、02_japan/04 と JPX 公式で要確認 |
+| TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | — | ⚠M | 記憶のみ。呼値・値幅の数値は記載せず、02_japan/04 と JPX 公式で要確認 |
 

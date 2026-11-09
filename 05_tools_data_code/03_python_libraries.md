@@ -6,8 +6,8 @@
 
 ## 1. 調査方法と読み方
 
-- 取得: `curl https://pypi.org/pypi/<package>/json` を 2026-11-09 に実行し、`info` の version・requires_python・license・classifiers・project_urls、`urls` の upload_time_iso_8601・filename、README 本文（`info.description`）を読んだ。出典表の URL 列は各パッケージの Homepage／Project URL。
-- 「最新版リリース日」は最新版のファイルのうち最も早いアップロード日（UTC）。最終リリースから 730 日以上経過したものは年数を括弧で示し【保守注意】を付けた（古い＝使えないではないが、pandas・numpy の更新に追随していない可能性がある）。
+- 確認日: 2026-11-09（版・リリース日・ライセンスは要公式確認＝再取得）。取得: `curl https://pypi.org/pypi/<package>/json` を同日に実行し、`info` の version・requires_python・license・classifiers・project_urls、`urls` の upload_time_iso_8601・filename、README 本文を読んだ。出典表の URL 列は各パッケージの Homepage／Project URL。
+- 「最新版リリース日」は最新版のファイルのうち最も早いアップロード日（UTC）。最終リリースから 730 日以上経過したものは年数を括弧で示し【保守注意】を付けた（古い＝使えないとは限らない）。
 - 「3.13」列: **W** = cp313 または abi3 の wheel あり／**P** = 純 Python wheel（py3-none-any）あり／**△** = wheel はあるが cp313 向けは無い（sdist からビルド）／**S** = sdist のみ（ビルドが必要）。
 - 「実測」は本セッションのサンドボックス（Linux x86_64、Python 3.13.18、pip 26.2.2）で `pip install` と合成データでの最小実行を行った 1 回の観測であり、他 OS・実データ・全 API の保証ではない [TL-236]。
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | pandas | 3.1.1 | >=3.11 | cp313 manylinux_2_24／2_28 wheel | 導入・import とも成功 |
 | numpy | 2.5.4 | >=3.12 | cp313 manylinux_2_27／2_28 wheel | 成功 |
-| TA-Lib | 0.8.3 | >=3.9 | `ta_lib-0.8.3-cp313` manylinux2014 wheel | 成功。システムに TA-Lib の C ライブラリが無い環境で import でき、拡張モジュールは約 11.5 MB の単一 `.so` |
+| TA-Lib | 0.8.3 | >=3.9 | `ta_lib-0.8.3-cp313` manylinux2014 wheel | 成功。システムに TA-Lib の C ライブラリが無い環境で import でき、拡張モジュールは約 11.6 MB の単一 `.so` |
 | mplfinance | 0.12.10b0 | 未指定 | py3-none-any | **初回は `six` 不足で ImportError**（`mplfinance/_utils.py` が `six.moves` を import）。`six` 1.17.0 を追加後、ローソク足＋移動平均＋出来高の PNG 保存に成功 |
 | matplotlib | 3.11.2 | >=3.11 | cp313 manylinux2014 wheel | 成功 |
 | pytest | 9.2.0 | >=3.10 | py3-none-any | 成功（ダミーテスト 1 件が通過） |
@@ -53,7 +53,7 @@ mpf.plot(df, type="candle", mav=(5, 10), volume=True, savefig="chart.png")
 | パッケージ | 最新版 | 最新版リリース日 | ライセンス | requires_python | 3.13 | 要点・注意 | 出典 |
 |---|---|---|---|---|---|---|---|
 | pandas-datareader | 0.11.1 | 2026-06-24 | BSD-3-Clause | >=3.11 | P | README はマクロ・ファクター系（FRED, Fama/French, Bank of Canada, World Bank, OECD, Eurostat）を主対象と説明。価格系リーダー（Yahoo, Stooq 等）の現状は README から確認できず**未確認**。 | [TL-207] |
-| yfinance | 1.8.0 | 2026-11-03 | Apache-2.0 | 未指定 | P | Yahoo! の公開 API を使う非公式ツール。README は「研究・教育目的」「Yahoo! の API は個人利用限定」と明記。**既定 `auto_adjust=True`（配当調整済み価格）**。curl_cffi 等に依存。 | [TL-208] |
+| yfinance | 1.8.0 | 2026-11-03 | Apache-2.0 | 未指定 | P | Yahoo! の公開 API を使う非公式ツール。README は「研究・教育目的」「Yahoo! の API は個人利用限定」と明記。**既定 `auto_adjust=True`（配当調整済み価格）**。 | [TL-208] |
 | jquants-api-client | 2.8.0 | 2026-09-30 | Apache-2.0 | <4.0,>=3.10 | P | J-Quants API **V2**（API キー認証）の Python クライアント（作者表記 J-Quants Project Contributors）。README は Python 3.13・Colab で動作確認、pandas 3 系対応、J-Quants は有償サービスと記載。import 名は `jquantsapi`。 | [TL-209] |
 | edinet-tools | 0.9.1 | 2026-10-13 | メタデータ未記載（README バッジは MIT） | >=3.11 | P | 個人名義の EDINET 書類パーサ（依存なし）。取得には無料の EDINET API キーが必要と README に記載。 | [TL-210] |
 | exchange_calendars | 4.13.2 | 2026-03-10 | Apache-2.0 | <4,>=3.10 | P | 取引所カレンダー。README の表に東京証券取引所 **XTKS** がある。寄付・引けのオークション時間は「閉場」扱い。カレンダーは利用者貢献で維持と README が明記 → 臨時休場は公式と照合すること。 | [TL-211] |
@@ -129,7 +129,7 @@ mpf.plot(df, type="candle", mav=(5, 10), volume=True, savefig="chart.png")
 
 - **pandas-ta 0.4.71b0**: `numba==0.61.2` を固定。numba 0.61.2 は `numpy<2.3` を要求するため、numpy 2.5.4 の環境では numpy 2.2.6 への降格を伴う解決になった（pip dry-run）。numpy>=2.4.6 を要求する vectorbt 1.2.0 とは同居できない。
 - **vectorbt 1.2.0**: `numpy>=2.4.6`・`pandas>=3.0.3`・`numba>=0.66`（requires_dist）。
-- **zipline-reloaded 3.2.1**: `pandas<3.0`（Python 3.14 未満）。pandas 3.1.1 入りの環境へは pandas 2.3.3 への降格解決になり、`pandas>=3` を併記すると zipline-reloaded 3.0.4 に巻き戻った（いずれも dry-run）。巻き戻し先が pandas 3 で動くかは未検証。
+- **zipline-reloaded 3.2.1**: `pandas<3.0`（requires_dist は全ての Python 版で上限 3.0 未満）。pandas 3.1.1 入りの環境へは pandas 2.3.3 への降格解決になり、`pandas>=3` を併記すると zipline-reloaded 3.0.4 に巻き戻った（いずれも dry-run）。巻き戻し先が pandas 3 で動くかは未検証。
 - **backtesting.py 0.6.6**: pandas 3.1.1 で実行できたが `Pandas4Warning`（`DatetimeIndex.dayofweek` 非推奨）を出す（[05](05_backtesting_frameworks.md)）。
 - **jquants-api-client 2.8.0**: pandas 3 系で文字列列が `object`→`str`、日付列が `datetime64[ns]`→`datetime64[us]` に変わると README が注記する。dtype に依存する処理は再点検する。
 - quantstats 0.0.86 は yfinance を、lightweight-charts（Python）は pywebview（GUI）を依存に含む。CI に入れる前に依存の木を確認する。
@@ -156,7 +156,7 @@ mpf.plot(df, type="candle", mav=(5, 10), volume=True, savefig="chart.png")
 - [02_data_sources.md](02_data_sources.md): データ源の規約・調整後株価・暦の落とし穴
 - [04_javascript_and_other_libraries.md](04_javascript_and_other_libraries.md): JS／他言語のライブラリ
 - [05_backtesting_frameworks.md](05_backtesting_frameworks.md): バックテスト基盤の比較
-- [../07_reference_code/](../07_reference_code/): 参照実装と TA-Lib 照合テスト（リポジトリ管理者が作成）
+- [../07_reference_code/README.md](../07_reference_code/README.md): 参照実装と TA-Lib 照合テスト（本稿の 2 章・4 章の実測と同じ版を使う）
 
 ## この文書の限界
 

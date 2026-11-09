@@ -6,8 +6,8 @@
 
 ## 1. 取得方法と読み方
 
-- npm: `https://registry.npmjs.org/<package>` の完全メタデータを 2026-11-09 に curl で取得し、`dist-tags.latest`・`time[latest]`・`license`・`description`・`homepage`、および `readme` を読んだ（✅S）。出典表の URL 列は各パッケージの homepage。
-- 他言語: crates.io API（User-Agent 付き）、Go module proxy、NuGet registration API、Maven Central の `maven-metadata.xml` と POM を同日に取得した。CRAN（HTTP 403）と GitHub 系には到達できず、R・Julia・C++ の個別ライブラリは**未確認**。
+- 確認日: 2026-11-09（版・ライセンスは要公式確認＝再取得）。npm: `https://registry.npmjs.org/<package>` の完全メタデータを同日に curl で取得し、`dist-tags.latest`・`time[latest]`・`license`・`description`・`homepage`、および `readme` を読んだ（✅S）。出典表の URL 列は各パッケージの homepage。
+- 他言語: crates.io API（識別用ヘッダ付き）、Go module proxy、NuGet registration API、Maven Central の `maven-metadata.xml` と POM を同日に取得した。CRAN（HTTP 403）と GitHub 系には到達できず、R・Julia・C++ の個別ライブラリは**未確認**。
 - 【保守注意】は最終公開から 730 日以上（年数を括弧表示）。古い＝使えないではないが、依存先の更新に追随していない可能性がある。license は package.json 等の記載で、LICENSE 本文は未読。
 - Web 検索の上限に達したため、各ライブラリの公式ドキュメント・デモ・ベンチマークは確認していない。性能に関する記述は出していない。
 

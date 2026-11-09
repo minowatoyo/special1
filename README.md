@@ -1,6 +1,6 @@
 # 株式チャート分析 資料集
 
-> 要約: 株式のチャート分析（テクニカル分析）に関する資料を、手法・日本市場の固有事情・学術的エビデンス・学習資源・ツールとデータ・実践手順・検証用コードに分けて集めた日本語の資料集。全29文書・約748 KB、出典は一意に875件。出典の実在は作業記録と機械照合し、確認の程度を検証区分で示した。チャート分析の効果は断定せず、エビデンスの強弱と限界を併記している。教育目的であり、投資助言ではない。
+> 要約: 株式のチャート分析（テクニカル分析）に関する資料を、手法・日本市場の固有事情・学術的エビデンス・学習資源・ツールとデータ・実践手順・検証用コードに分けて集めた日本語の資料集。全29文書・約759 KB、出典は一意に891件。出典の実在は作業記録と機械照合し、確認の程度を検証区分で示した。チャート分析の効果は断定せず、エビデンスの強弱と限界を併記している。教育目的であり、投資助言ではない。
 > 最終更新: 2026-11-09
 
 ## 1. 使い方（目的別の入口）
@@ -52,7 +52,7 @@
 | 文書 | 内容 | 大きさ | 出典（✅S／⚠M） |
 |---|---|---:|---:|
 | [04_learning/01_books_english.md](04_learning/01_books_english.md) | 英語圏の定番書（検索で書誌を確認した約40冊） | 25 KB | 42／0 |
-| [04_learning/02_books_japanese.md](04_learning/02_books_japanese.md) | 日本語書籍。**邦訳11点は記憶ベース、日本人著者の解説書は未収録**（選書の観点を記載） | 13 KB | 3／13 |
+| [04_learning/02_books_japanese.md](04_learning/02_books_japanese.md) | 日本語書籍。**定番13点は記憶ベース**（邦訳11点＋国内2点）。日本人著者の入門書は4冊のみ（書名・著者を確認、内容は未評価）。選書の観点を記載 | 16 KB | 7／13 |
 | [04_learning/03_online_courses_and_sites.md](04_learning/03_online_courses_and_sites.md) | オンライン学習資源・証券会社の解説ページ | 17 KB | 15／8 |
 | [04_learning/04_organizations_journals_certifications.md](04_learning/04_organizations_journals_certifications.md) | 専門家団体・資格・学術誌（記憶ベースが中心。要公式確認） | 14 KB | 11／14 |
 | [04_learning/05_study_roadmap.md](04_learning/05_study_roadmap.md) | 目的別の学習ロードマップ（基礎→実践→検証→自動化） | 23 KB | 4／0 |
@@ -61,11 +61,11 @@
 
 | 文書 | 内容 | 大きさ | 出典（✅S／⚠M） |
 |---|---|---:|---:|
-| [05_tools_data_code/01_charting_platforms_and_screeners.md](05_tools_data_code/01_charting_platforms_and_screeners.md) | チャート・スクリーナー・日本の証券会社ツール | 17 KB | 11／3 |
-| [05_tools_data_code/02_data_sources.md](05_tools_data_code/02_data_sources.md) | データ源（J-Quants、各社API等）と、調整後価格・生存者バイアス等の落とし穴 | 22 KB | 26／1 |
+| [05_tools_data_code/01_charting_platforms_and_screeners.md](05_tools_data_code/01_charting_platforms_and_screeners.md) | チャート・スクリーナー・日本の証券会社ツール | 22 KB | 21／3 |
+| [05_tools_data_code/02_data_sources.md](05_tools_data_code/02_data_sources.md) | データ源（J-Quants、各社API等）と、調整後価格・生存者バイアス等の落とし穴 | 24 KB | 28／1 |
 | [05_tools_data_code/03_python_libraries.md](05_tools_data_code/03_python_libraries.md) | Python ライブラリの実測カタログ（PyPI 実測、保守状況、RSI 実測差） | 24 KB | 36／0 |
 | [05_tools_data_code/04_javascript_and_other_libraries.md](05_tools_data_code/04_javascript_and_other_libraries.md) | JS/TS 等のチャート・指標ライブラリ（npm 実測、TradingView のライセンス区分） | 21 KB | 39／1 |
-| [05_tools_data_code/05_backtesting_frameworks.md](05_tools_data_code/05_backtesting_frameworks.md) | バックテスト基盤の比較と、日本株制度に結びつけた設計上の落とし穴 | 23 KB | 23／1 |
+| [05_tools_data_code/05_backtesting_frameworks.md](05_tools_data_code/05_backtesting_frameworks.md) | バックテスト基盤の比較と、日本株制度に結びつけた設計上の落とし穴 | 24 KB | 23／1 |
 
 ### 06_workflow — 実践手順
 
@@ -111,7 +111,7 @@
 
 | 区分 | 意味 | 件数（一意） |
 |---|---|---:|
-| ✅S | 検索結果・論文データベース・レジストリの応答に現れ、書誌情報が整合することを確認した。**全文・原ページは読んでいない** | 790 |
+| ✅S | 検索結果・論文データベース・レジストリの応答に現れ、書誌情報が整合することを確認した。**全文・原ページは読んでいない** | 806 |
 | ⚠M | 作成時の記憶に基づく（広く知られた古典など）。今回の作業で再確認していない。URL は付けていない | 85 |
 | ❓ | 不確実。人手での確認が必要 | 0 |
 
@@ -120,7 +120,7 @@
 **限界（重要）**:
 
 1. 外部サイトの本文を直接取得できなかった（名前解決が遮断される環境だった）。✅S は「存在と書誌情報の確認」であって、**内容を原典で確認したものではない**。論文は抄録レベルの要約である。
-2. Web 検索には共有の利用上限があり、作業の後半は十分に使えなかった。そのため **日本語書籍は13点すべてが記憶ベース**（邦訳11点＋国内の2点）で、ローソク足・酒田五法・個別株の売買ルールなど日本人著者の解説書は収録できていない。団体・資格の詳細、オンライン教材の無料／有料も記憶ベースが中心（`04_learning`）。日本語の学術文献（J-STAGE／CiNii）も未確認。
+2. Web 検索には共有の利用上限があり、作業の後半は十分に使えなかった。そのため **日本語書籍の定番13点は記憶ベース**（邦訳11点＋国内の2点）で、日本人著者の入門書は書名・著者を確認できた4冊だけ（内容は未評価）。ローソク足・酒田五法・個別株の売買ルール・需給分析の専門書は収録できていない。団体・資格の詳細、オンライン教材の無料／有料も記憶ベースが中心（`04_learning`）。日本語の学術文献（J-STAGE／CiNii）も未確認。
 3. 時間依存の情報（制度、料金、パッケージの版、資格）には確認日を付けたが、更新される。
 4. Consensus の論文ページ URL は、追跡用パラメータ（`?utm_source=…`）を除いた形で記載している。
 5. 参考実装の検証は合成データのみ。実市場での有効性は何も保証しない。
