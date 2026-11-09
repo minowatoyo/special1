@@ -7,7 +7,7 @@ lint が見るもの（01〜05 の本文書）:
   * 先頭の見出し・要約・最終更新、必須セクション（関連文書／この文書の限界／出典）
   * 出典表: 7 列、ID の形式と全体での一意性、検証タグ（✅S / ⚠M / ❓）、URL の形式
   * ⚠M の行に URL が付いていないこと（記憶由来の資料に URL を付けない規則）
-  * 本文の引用 [XX-000] が出典表に存在するか、相対リンクの宛先が存在するか
+  * 本文の引用 [XX-000] が（全文書の）出典表に存在するか、相対リンクの宛先が存在するか
   * 禁止語（AI モデル名など）、極端なサイズ
 sources は、検証タグの集計・要確認一覧（⚠M / ❓）・URL のドメイン別件数をまとめた SOURCES.md を作る。
 """
@@ -84,11 +84,15 @@ def parse_sources(text: str) -> tuple[list[dict], list[str]]:
 def lint(root: Path) -> int:
     problems: list[str] = []
     warns: list[str] = []
-    all_ids: dict[str, str] = {}
+    all_ids: dict[str, tuple[str, str, str]] = {}
     files = content_files(root)
     if not files:
         print("本文書が見つからない:", root)
         return 1
+    global_ids: set[str] = set()
+    for p in files:
+        rows0, _ = parse_sources(p.read_text(encoding="utf-8"))
+        global_ids |= {r["id"] for r in rows0}
     for p in files:
         rel = p.relative_to(root).as_posix()
         text = p.read_text(encoding="utf-8")
@@ -121,8 +125,13 @@ def lint(root: Path) -> int:
             if not ID_RE.match(i):
                 problems.append(f"{rel}: ID の形式が不正: {i!r}")
             if i in all_ids:
-                problems.append(f"{rel}: ID 重複 {i}（{all_ids[i]} にもある）")
-            all_ids[i] = rel
+                prev_rel, prev_url, prev_title = all_ids[i]
+                same_url = r["url"] != "—" and r["url"] == prev_url
+                same_title = r["url"] == "—" and prev_url == "—" and r["title"] == prev_title
+                if not (same_url or same_title):
+                    problems.append(f"{rel}: ID {i} が {prev_rel} の別の出典と衝突している（同一出典の再利用は許可）")
+            else:
+                all_ids[i] = (rel, r["url"], r["title"])
             ids_here.add(i)
             if r["tag"] not in TAGS:
                 problems.append(f"{rel}: {i} の検証タグが不正: {r['tag']!r}")
@@ -136,8 +145,8 @@ def lint(root: Path) -> int:
         m_src = re.search(r"^##\s+出典\s*$", text, re.M)
         body = text[:m_src.start()] if m_src else text
         cited = set(CITE_RE.findall(body))
-        for c in sorted(cited - ids_here):
-            problems.append(f"{rel}: 本文の引用 [{c}] が同ファイルの出典表にない")
+        for c in sorted(cited - global_ids):
+            problems.append(f"{rel}: 本文の引用 [{c}] がどの出典表にもない")
         unused = ids_here - cited
         if rows and len(unused) > 0.6 * len(rows) and len(rows) > 15:
             warns.append(f"{rel}: 出典 {len(rows)} 件中 {len(unused)} 件が本文で引用されていない")
@@ -150,7 +159,7 @@ def lint(root: Path) -> int:
             path = target.split("#")[0]
             if path and not (p.parent / path).resolve().exists():
                 problems.append(f"{rel}: リンク切れ → {target}")
-    print(f"検査対象 {len(files)} ファイル / 出典 {len(all_ids)} 件")
+    print(f"検査対象 {len(files)} ファイル / 一意な出典 {len(all_ids)} 件")
     for w in warns:
         print("WARN ", w)
     for q in problems:
@@ -194,8 +203,14 @@ def build_sources(root: Path, out: Path) -> None:
                 review[rel].append(r)
             if r["url"].startswith("http"):
                 domains[urlparse(r["url"]).netloc.lower().removeprefix("www.")] += 1
+    uniq = {}
+    for rows in per_file.values():
+        for r in rows:
+            uniq.setdefault(r["id"], r["tag"])
     n = sum(total.values())
-    lines.append(f"| **合計** | **{n}** | **{total['✅S']}** | **{total['⚠M']}** | **{total['❓']}** |")
+    uc = Counter(uniq.values())
+    lines.append(f"| **合計（延べ）** | **{n}** | **{total['✅S']}** | **{total['⚠M']}** | **{total['❓']}** |")
+    lines.append(f"| **一意な出典（ID で重複排除）** | **{len(uniq)}** | **{uc['✅S']}** | **{uc['⚠M']}** | **{uc['❓']}** |")
     lines += ["", "## 人手での確認を推奨する資料（⚠M / ❓）", ""]
     if not review:
         lines.append("（なし）")
@@ -211,7 +226,7 @@ def build_sources(root: Path, out: Path) -> None:
               "- 台帳は各文書の出典表から機械的に集計したもので、URL の到達性は確認していない（作業環境からは外部サイトに接続できなかった）。",
               "- ✅S は書誌情報の整合を確認したことを意味し、内容の正しさや全文の精読を意味しない。", ""]
     out.write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {out}  (出典 {n} 件: ✅S {total['✅S']} / ⚠M {total['⚠M']} / ❓ {total['❓']})")
+    print(f"wrote {out}  (延べ {n} 件 / 一意 {len(uniq)} 件: ✅S {uc['✅S']} / ⚠M {uc['⚠M']} / ❓ {uc['❓']})")
 
 
 def main() -> int:

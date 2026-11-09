@@ -1,0 +1,124 @@
+# チャート／スクリーナー製品（海外・日本）の整理と、スクリーニング条件の組み方
+> 要約: 海外のチャート・スクリーナー製品（TradingView, StockCharts, Finviz, TC2000, MetaStock, thinkorswim, IBKR TWS, MetaTrader）と、日本の証券会社ツール・情報サイト（マーケットスピード II, HYPER SBI 2, ネットストック・ハイスピード, マネックストレーダー, kabuステーション, 株探, Yahoo!ファイナンス, みんかぶ）を一覧にした。
+> 本セッションでは Web 検索の上限に達し、どの製品の公式ページも読めていない。機能・料金・日本株の対応状況は記憶（⚠M）か「未確認」で、確認できたのは PyPI 上の周辺ライブラリの記述に限る。料金は全て要公式確認（確認日 2026-11-09）。
+> 後半は、製品を選ぶときに公式で確認すべき項目と、テクニカル条件でのスクリーニングの組み方（条件式・失敗パターン・pandas での再現）を述べる。
+> 最終更新: 2026-11-09
+
+## 1. 読み方
+
+- 「主なテクニカル機能（確認できたもの）」は、この調査で根拠を得られたものだけを書いた。根拠がないものは「未確認」とし、記憶に基づくものは ⚠M を付けた。製品の機能一覧は更新が速く、指標の数・描画ツールの種類は必ず公式で確認すること。
+- ✅S の根拠は、製品周辺の第三者ライブラリ（PyPI）の JSON と README に限られる。第三者ライブラリの README は製品側の仕様を保証しない。
+
+## 2. 海外の製品
+
+| 名称 | 種別 | 日本株対応 | 主なテクニカル機能（確認できたもの） | 料金（要公式確認） | 備考 | 出典 |
+|---|---|---|---|---|---|---|
+| TradingView | Web／アプリのチャート・スクリーナー（スクリプト言語 Pine Script を持つと記憶 ⚠M） | 日本株の表示に対応と記憶（⚠M）。第三者ライブラリの README は株式を約 70 か国扱うと説明するが、日本の個別確認はできていない | 第三者 README: スキャナー経由で OHLC・テクニカル指標・財務指標など 3,000 超のフィールドと 1 分〜1 か月の時間枠を指定できる（例 `MACD.macd`、1 分足指定の記法あり） | 複数の有料プランがあると記憶（⚠M）。未確認 | 同 README の例では米国主要取引所が 15 分遅延、リアルタイムはログインのクッキーが必要。非公式ライブラリ（下記 3 章）は規約上のリスクあり | [TL-001] [TL-012] |
+| StockCharts | Web のチャート・スキャン・教育サイト（⚠M） | 未確認 | 未確認（ポイント・アンド・フィギュアや相対力の機能を持つと記憶 ⚠M） | 未確認 | 教育コンテンツ ChartSchool の運営元と記憶（⚠M） | [TL-012] |
+| Finviz | 米国株中心のスクリーナー・ヒートマップ（⚠M） | 日本個別株は未確認 | 未確認。非公式 Python ラッパー `finviz` 2.1.0・`finvizfinance` 1.5.0 が PyPI にある | 無料版と有料版があると記憶（⚠M）。未確認 | ラッパーは非公式 | [TL-005] [TL-006] [TL-012] |
+| TC2000 | デスクトップ／Web のチャート・スキャン（⚠M） | 未確認 | 未確認 | 未確認 | — | [TL-012] |
+| MetaStock | デスクトップの分析ソフト（⚠M） | 未確認（データ契約次第と推測） | 未確認 | 未確認 | — | [TL-012] |
+| thinkorswim | 米国証券 Charles Schwab の取引プラットフォーム（⚠M） | 未確認 | 未確認。Schwab API の非公式ラッパー `schwab-py` 1.5.1（2025-06）が PyPI にある | 未確認 | TD Ameritrade 向けラッパー `tda-api` は 2022-06 以降リリースなし | [TL-008] [TL-009] [TL-012] |
+| Interactive Brokers TWS | 証券会社の取引ツール＋API | 日本株の取引・データに対応と記憶（⚠M） | 未確認 | 未確認 | PyPI の公式 `ibapi` は 9.81.1.post1（2020-12）で止まり、license 欄は「非商用／商用ライセンス」。`ib_async` 2.1.0（2025-12）は別の非同期ラッパー | [TL-010] [TL-011] [TL-012] |
+| MetaTrader 4／5 | FX・CFD 向けプラットフォームと自動売買（⚠M） | 個別株は証券会社次第。日本の個人向けは FX・CFD が中心と記憶（⚠M） | 独自言語（MQL）での指標・EA 開発と記憶（⚠M）。Python 連携 `MetaTrader5` 5.0.6231（2026-09-27）は Windows 向け wheel のみ | 未確認 | 公式サイトは www.metatrader5.com（PyPI のメタデータ） | [TL-007] [TL-012] |
+
+## 3. 日本の証券会社ツール・情報サイト
+
+| 名称 | 種別 | 日本株対応 | 主なテクニカル機能（確認できたもの） | 料金（要公式確認） | 備考 | 出典 |
+|---|---|---|---|---|---|---|
+| 楽天証券 マーケットスピード II | PC の取引ツール（⚠M） | 国内株 | 未確認（一般的な指標と描画ツールを備えると記憶 ⚠M） | 口座保有者向けで無料と記憶（⚠M）。未確認 | スマホ版は iSPEED、Excel 連携機能があると記憶（⚠M） | [TL-013] |
+| SBI証券 HYPER SBI 2 | PC の取引ツール（⚠M） | 国内株 | 未確認 | 未確認 | — | [TL-013] |
+| 松井証券 ネットストック・ハイスピード | PC の取引ツール（⚠M） | 国内株 | 未確認 | 未確認 | — | [TL-013] |
+| マネックス証券 マネックストレーダー | PC／スマホの取引ツール（⚠M） | 国内株 | 未確認 | 未確認 | ファンダメンタル分析の銘柄スカウターがあると記憶（⚠M） | [TL-013] |
+| 三菱UFJ eスマート証券 kabuステーション（旧 auカブコム証券） | PC の取引ツールと API（⚠M） | 国内株 | 未確認 | 未確認 | 社名変更は 2024 年と記憶（⚠M）。API は [02_data_sources.md](02_data_sources.md) | [TL-013] |
+| 大和証券・野村證券ほか | — | 検索できず**未確認** | 未確認 | 未確認 | — | — |
+| 株探（kabutan） | 個人投資家向け株価情報サイト（⚠M） | 国内株 | 未確認（スクリーニングとチャートがあると記憶 ⚠M） | 無料と有料があると記憶（⚠M） | — | [TL-014] |
+| Yahoo!ファイナンス | ポータルの株価・チャート（⚠M） | 国内株 | 未確認（標準的な指標を備えると記憶 ⚠M） | 未確認 | 機械的な取得の規約は未確認。yfinance の注意は 02 章 | [TL-014] |
+| みんかぶ | 株価予想・個人投資家の予想を集める情報サイト（⚠M） | 国内株 | 未確認 | 未確認 | — | [TL-014] |
+
+## 4. 製品選定の確認項目
+
+| 項目 | 確認する理由 |
+|---|---|
+| 対象市場・銘柄区分 | 東証（プライム／スタンダード／グロース）、名証・福証・札証、PTS、ETF・REIT・優先株を含むか |
+| データの遅延と更新時刻 | リアルタイムか遅延か。引け後の確定値はいつ反映されるか |
+| 足種と履歴の長さ | 分足の保持期間、日足の開始年。長期の移動平均や 52 週高値の判定に影響 |
+| 価格の調整方針 | 分割・併合の調整、配当の調整の有無。[02_data_sources.md](02_data_sources.md) 4.1 |
+| 出来高の定義 | 東証のみか PTS を含む合算か。出来高条件の結果が変わる |
+| 指標の計算式とパラメータ | RSI の平滑化、ボリンジャーバンドのσ、一目均衡表の期間（9・26・52）を変更できるか。製品間で値が一致しない原因になる（[../01_techniques/07_oscillators_momentum.md](../01_techniques/07_oscillators_momentum.md)） |
+| スクリーニングの条件数と保存 | 複合条件の最大数、保存、通知（アラート）、結果の件数上限 |
+| エクスポートと API | CSV／Excel 出力、API の有無。バックテストへの接続に必要 |
+| 料金・口座条件 | 口座残高や取引回数による無料条件があるか |
+| 規約 | 自動取得、再配布、商用利用の可否 |
+
+## 5. 非公式ライブラリの存在と注意（✅S）
+
+- TradingView: `tradingview-screener` 3.2.2（2026-09-14、MIT）の README は、TradingView の API を直接呼んでスクリーナーを作る方式で、ウェブスクレイピングや HTML 解析は不要と説明する。ただしこれは第三者製であり、TradingView が公式に提供・保証する公開 API かは未確認。`tradingview-ta` 3.3.0（概要に「非公式」と明記、2022-10 以降リリースなし）、履歴取得用の `tradingview-datafeed` 2.1.1（2024-03）・`tvdatafeed-enhanced` 2.2.1（2025-10）もある [TL-001] [TL-002] [TL-003] [TL-004]。
+- 利用規約や仕様変更で突然動かなくなる、アカウント停止の可能性がある、という種類のリスクは非公式ライブラリに一般的に当てはまる。研究・教育目的に限り、重要な判断や自動売買の根拠データにしない。
+
+## 6. スクリーニングの使い方（テクニカル条件の例）
+
+記法: `C`=終値、`V`=出来高、`MA(n)`=n 日単純移動平均、`[-1]`=前営業日。日足を前提とする。
+
+| 目的 | 条件の例 | 失敗パターン・留意点 |
+|---|---|---|
+| 移動平均の上抜け | `C > MA(25)` かつ `C[-1] <= MA(25)[-1]` | レンジ相場でダマシが多い。ギャップで条件成立日と約定可能価格が乖離。`MA(25)` の傾きを併用 |
+| ゴールデンクロス | `MA(5) > MA(25)` かつ `MA(5)[-1] <= MA(25)[-1]`（25／75 も） | 遅行性が強い。クロス直後の反転に弱い |
+| パーフェクトオーダー | `MA(5) > MA(25) > MA(75)` かつ 3 本とも上向き | 既に上昇が進んだ銘柄が並ぶ。乖離率の上限を併用 |
+| 乖離率の逆張り | `C / MA(25) - 1 <= -x%` | 下降トレンドの継続に弱い。x は ATR など銘柄のボラティリティで相対化 |
+| RSI | `RSI(14) <= 30`（売られ過ぎ）／`>= 70` | 強いトレンドで張り付く。平滑化の定義が製品で異なり値がずれる |
+| 出来高急増＋新高値 | `V >= 2 × MA_V(20)[-1]` かつ `C` が直近 250 営業日の最高値 | 平均出来高に当日を含めると自己参照になる。材料による一過性、ストップ高張り付き、低流動性 |
+| ボリンジャーバンド | `C > MA(20) + 2σ`（バンドウォーク）、バンド幅／MA(20) が過去 N 本の下位（スクイーズ） | 正規分布の前提は成り立たない。σ の計算（母／標本）の違い |
+| MACD | `MACD > Signal` かつ `MACD[-1] <= Signal[-1]`、ゼロライン上の限定 | 遅行性。レンジでの頻発 |
+| 一目均衡表（三役好転） | `C` が雲の上、転換線 > 基準線、遅行スパンが 26 日前の `C` より上 | 実装差（先行スパンのシフト幅、期間設定）。[../02_japan/02_ichimoku_kinko_hyo.md](../02_japan/02_ichimoku_kinko_hyo.md) |
+| 流動性・ユニバース | 20 日平均売買代金 ≥ x 円、時価総額、ETF・REIT・優先株の除外、監理・整理銘柄の除外 | 条件を緩めると約定できない銘柄が混じる。価格水準条件は未調整価格で判定 |
+
+同じ条件を pandas で再現する骨子（合成データで動作確認済み。`px` は日付昇順の `close`・`volume` 列を持つ DataFrame）:
+
+```python
+ma25 = px["close"].rolling(25).mean()
+cross_up = (px["close"] > ma25) & (px["close"].shift(1) <= ma25.shift(1))
+vol_ratio = px["volume"] / px["volume"].rolling(20).mean().shift(1)   # 当日を含めない平均
+hit = cross_up & (vol_ratio >= 1.5)                                    # 当日に条件成立
+```
+
+- スクリーニングは**候補の絞り込み**であって売買シグナルではない。結果は「どの日付のデータで、どの調整方式で」得たかで変わる。条件・製品・日付・調整方式を記録する。
+- 現在上場している銘柄だけが対象のスクリーナーで過去の成績を検証すると、生存者バイアスが入る（[02_data_sources.md](02_data_sources.md) 4.2）。検証目的ではバックテスト基盤（[05_backtesting_frameworks.md](05_backtesting_frameworks.md)）を使う。
+- 製品ごとの仕様差（「当日」か「前日」の値か、休場日の扱い、移動平均が単純か指数か、分割調整の有無）は、同じ名前の条件でも結果を変える。既知の銘柄で自前計算と突き合わせてから使う。
+
+## 関連文書
+
+- [02_data_sources.md](02_data_sources.md): データ源の規約と落とし穴
+- [03_python_libraries.md](03_python_libraries.md): Python 側の指標ライブラリと実測
+- [04_javascript_and_other_libraries.md](04_javascript_and_other_libraries.md): JS の描画ライブラリ（TradingView の Lightweight Charts のライセンス含む）
+- [05_backtesting_frameworks.md](05_backtesting_frameworks.md): バックテスト基盤
+- [../01_techniques/06_moving_averages.md](../01_techniques/06_moving_averages.md): 移動平均線とグランビル
+- [../02_japan/03_other_japanese_methods.md](../02_japan/03_other_japanese_methods.md): パーフェクトオーダー等の日本の手法
+
+## この文書の限界
+
+- Web 検索の上限に達したため、全ての製品について公式ページ・料金表・機能一覧を確認していない。表の「⚠M」は記憶のみ、「未確認」は材料が得られなかったことを意味する。日本の証券会社ツールの指標数・描画ツール・無料条件はいずれも未確認である。
+- 大和証券・野村證券など上記以外の証券会社、海外の他製品（Barchart, Koyfin, AmiBroker など）は調べていない。
+- 第三者ライブラリの README は製品の仕様の保証ではなく、TradingView のデータ範囲（約 70 か国）も製品側の確認を経ていない。
+- スクリーニング条件の閾値（2 倍、250 日、30／70 など）は例示であり、有効性の主張ではない。有効性の根拠は [../03_evidence/01_academic_literature.md](../03_evidence/01_academic_literature.md) を参照。
+- 料金・口座条件は 2026-11-09 時点で未確認。
+
+## 出典
+
+| ID | 資料名 | 著者・発行元 | 年 | URL | 検証 | メモ |
+|---|---|---|---|---|---|---|
+| TL-001 | PyPI: tradingview-screener 3.2.2 | — | 2026 | https://github.com/shner-elmo/TradingView-Screener | ✅S | PyPI JSON 実測。第三者製。README の機能説明と更新モードの記載 |
+| TL-002 | PyPI: tradingview-ta 3.3.0 | Brian | 2022 | https://github.com/brian-the-dev/python-tradingview-ta | ✅S | PyPI JSON 実測。概要に Unofficial と明記 |
+| TL-003 | PyPI: tradingview-datafeed 2.1.1 | @StreamAlpha | 2024 | https://github.com/demonarch/tvdatafeed/ | ✅S | PyPI JSON 実測。TradingView の履歴データ取得（第三者製） |
+| TL-004 | PyPI: tvdatafeed-enhanced 2.2.1 | StreamAlpha, rongardF | 2025 | https://github.com/rongardF/tvdatafeed/ | ✅S | PyPI JSON 実測。履歴・ライブデータ取得（第三者製） |
+| TL-005 | PyPI: finviz 2.1.0 | — | 2026 | https://github.com/mariostoev/finviz | ✅S | PyPI JSON 実測。概要に Unofficial と明記 |
+| TL-006 | PyPI: finvizfinance 1.5.0 | — | 2026 | https://github.com/lit26/finvizfinance | ✅S | PyPI JSON 実測。Finviz の情報ダウンローダ（第三者製） |
+| TL-007 | PyPI: metatrader5 5.0.6231 | MetaQuotes Ltd. | 2026 | https://www.metatrader5.com | ✅S | PyPI JSON 実測。Windows 向け wheel のみ。docs は mql5.com（メタデータ） |
+| TL-008 | PyPI: schwab-py 1.5.1 | Alex Golec | 2025 | https://github.com/alexgolec/schwab-py | ✅S | PyPI JSON 実測。概要に Unofficial と明記 |
+| TL-009 | PyPI: tda-api 1.6.0 | Alex Golec | 2022 | https://github.com/alexgolec/tda-api | ✅S | PyPI JSON 実測。概要に unofficial と明記。2022-06 以降リリースなし |
+| TL-010 | PyPI: ibapi 9.81.1.post1 | IBG LLC | 2020 | https://interactivebrokers.github.io/tws-api | ✅S | PyPI JSON 実測。license 欄: IB API Non-Commercial License または Commercial License |
+| TL-011 | PyPI: ib_async 2.1.0 | Ewald de Wit | 2025 | https://github.com/ib-api-reloaded/ib_async | ✅S | PyPI JSON 実測。概要のみ |
+| TL-012 | 海外のチャート・スクリーナー製品（TradingView, StockCharts, Finviz, TC2000, MetaStock, thinkorswim, Interactive Brokers TWS, MetaTrader）の概要 | 各社 | — | — | ⚠M | 記憶のみ。公式ページ未確認。要公式確認 |
+| TL-013 | 日本の証券会社ツール（楽天証券 マーケットスピード II、SBI証券 HYPER SBI 2、松井証券 ネットストック・ハイスピード、マネックストレーダー、kabuステーション）の概要 | 各証券会社 | — | — | ⚠M | 記憶のみ。公式ページ未確認。要公式確認 |
+| TL-014 | 日本の情報サイト（株探、Yahoo!ファイナンス、みんかぶ）の概要 | 各社 | — | — | ⚠M | 記憶のみ。公式ページ未確認。要公式確認 |
+

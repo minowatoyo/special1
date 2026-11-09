@@ -52,6 +52,15 @@ CASES = {
     "DEMA(20)": (lambda d: ind.dema(d.close, 20), lambda d: talib.DEMA(arr(d.close), 20), 0),
     "TEMA(20)": (lambda d: ind.tema(d.close, 20), lambda d: talib.TEMA(arr(d.close), 20), 0),
     "KAMA(10)": (lambda d: ind.kama(d.close, 10), lambda d: talib.KAMA(arr(d.close), 10), 0),
+    # TA-Lib 0.8.3 で追加された関数。HMA は sqrt(n) を切り捨てる（n=14, 21 で四捨五入との差が出る）
+    "HMA(9)": (lambda d: ind.hma(d.close, 9), lambda d: talib.HMA(arr(d.close), 9), 0),
+    "HMA(14)": (lambda d: ind.hma(d.close, 14), lambda d: talib.HMA(arr(d.close), 14), 0),
+    "HMA(21)": (lambda d: ind.hma(d.close, 21), lambda d: talib.HMA(arr(d.close), 21), 0),
+    "RMA(14) = Wilder平滑": (lambda d: ind.wilder_smooth(d.close, 14), lambda d: talib.RMA(arr(d.close), 14), 0),
+    "VWAP（累積）": (lambda d: ind.vwap(d.high, d.low, d.close, d.volume),
+                  lambda d: talib.VWAP(arr(d.high), arr(d.low), arr(d.close), arr(d.volume)), 0),
+    "VWMA(20)": (lambda d: ind.vwma(d.close, d.volume, 20),
+                 lambda d: talib.VWMA(arr(d.close), arr(d.volume), 20), 0),
     "RSI(14) Wilder": (lambda d: ind.rsi(d.close, 14), lambda d: talib.RSI(arr(d.close), 14), 0),
     "STOCH(14,3,3)": (
         lambda d: ind.stochastic(d.high, d.low, d.close, 14, 3, 3)[["slow_k", "slow_d"]],

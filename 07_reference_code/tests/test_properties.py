@@ -54,12 +54,34 @@ def test_rsi_cutler_differs_from_wilder(ohlcv):
     assert (a - b).abs().dropna().max() > 1.0                    # 実装差が実際に現れる
 
 
-def test_stochastic_range_and_japanese_mapping(ohlcv):
+def test_stochastic_range_and_western_definition(ohlcv):
     st = ind.stochastic(ohlcv.high, ohlcv.low, ohlcv.close, 14, 3, 3)
     assert st["fast_k"].dropna().between(0, 100).all()
-    # 日本のスロー: (SMA3(fast_k), SMA3(SMA3(fast_k))) = 欧米の (slow_k, slow_d)
+    # 欧米式: Slow %K = SMA(Fast %K)、Slow %D = SMA(Slow %K)
     pd.testing.assert_series_equal(st["slow_k"], st["fast_k"].rolling(3).mean(), check_names=False)
     pd.testing.assert_series_equal(st["slow_d"], st["slow_k"].rolling(3).mean(), check_names=False)
+
+
+def test_stochastic_jp_hand_example_and_difference_from_western():
+    # 手計算（n=2, m=2, y=2）: %K = [NaN, 75, 33.33, 75]。%D は分子・分母を2日ずつ合計して割る。
+    h, l, c = S([10, 12, 11, 13]), S([8, 9, 9, 10]), S([9, 11, 10, 12])
+    jp = ind.stochastic_jp(h, l, c, n=2, m=2, y=2)
+    assert jp["k"].iloc[1:].tolist() == pytest.approx([75.0, 100 / 3, 75.0])
+    assert jp["d"].iloc[2] == pytest.approx(100 * 4 / 7)        # (3+1)/(4+3)
+    assert jp["d"].iloc[3] == pytest.approx(100 * 4 / 7)        # (1+3)/(3+4)
+    assert jp["sd"].iloc[3] == pytest.approx(100 * 4 / 7)
+    western_slow_k = ind.stochastic(h, l, c, 2, 2, 2)["slow_k"].iloc[2]   # (75 + 33.33)/2 = 54.17
+    assert western_slow_k == pytest.approx((75.0 + 100 / 3) / 2)
+    assert abs(jp["d"].iloc[2] - western_slow_k) > 2.0           # 同一視できない（約3pt差）
+
+
+def test_stochastic_jp_equals_sma_of_k_when_range_is_constant():
+    # 分母（n日の最高値-最安値）が常に一定なら、比の和は %K の単純平均と一致する
+    base = S(np.r_[np.linspace(100, 110, 30), np.linspace(110, 100, 30)])
+    h, l, c = base + 5, base - 5, base + 1
+    # n=1 の窓なら分母は各足の (H-L)=10 で一定
+    jp = ind.stochastic_jp(h, l, c, n=1, m=3, y=3)
+    pd.testing.assert_series_equal(jp["d"], jp["k"].rolling(3).mean(), check_names=False, rtol=1e-12)
 
 
 # ------------------------------------------------------------------ ボラティリティ

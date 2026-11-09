@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "sma", "ema", "wma", "dema", "tema", "hma", "kama", "wilder_smooth",
-    "rsi", "stochastic", "macd", "cci", "williams_r", "roc", "momentum",
+    "sma", "ema", "wma", "vwma", "dema", "tema", "hma", "kama", "wilder_smooth",
+    "rsi", "stochastic", "stochastic_jp", "macd", "cci", "williams_r", "roc", "momentum",
     "ultimate_oscillator", "mfi", "trix",
     "bollinger", "true_range", "atr", "natr", "dmi_adx", "parabolic_sar",
     "donchian", "keltner", "aroon",
@@ -99,6 +99,11 @@ def wma(x: pd.Series, n: int) -> pd.Series:
     return x.rolling(n).apply(lambda a: float(np.dot(a, w) / w.sum()), raw=True)
 
 
+def vwma(close: pd.Series, volume: pd.Series, n: int = 20) -> pd.Series:
+    """出来高加重移動平均 = Σ(終値×出来高, n) / Σ(出来高, n)。"""
+    return (close * volume).rolling(n).sum() / volume.rolling(n).sum()
+
+
 def dema(x: pd.Series, n: int) -> pd.Series:
     """DEMA = 2*EMA - EMA(EMA)。"""
     e1 = ema(x, n)
@@ -115,10 +120,11 @@ def tema(x: pd.Series, n: int) -> pd.Series:
 
 def hma(x: pd.Series, n: int) -> pd.Series:
     """ハル移動平均 = WMA( 2*WMA(n/2) - WMA(n), sqrt(n) )。
-    n/2 は切り捨て、sqrt(n) は四捨五入（実装によって丸めが異なる）。
+    n/2 と sqrt(n) はともに切り捨て（TA-Lib 0.8.3 の HMA と一致。sqrt を四捨五入する実装もあり、
+    n=14, 21 などでは結果が変わる。tests/test_vs_talib.py で確認）。
     """
     half = max(1, n // 2)
-    root = max(1, int(round(math.sqrt(n))))
+    root = max(1, int(math.sqrt(n)))
     return wma(2.0 * wma(x, half) - wma(x, n), root)
 
 
@@ -168,11 +174,12 @@ def rsi(close: pd.Series, n: int = 14, method: str = "wilder") -> pd.Series:
 
 def stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
                k_period: int = 14, k_smooth: int = 3, d_period: int = 3) -> pd.DataFrame:
-    """ストキャスティクス。
+    """ストキャスティクス（欧米式）。
     fast_k = 100*(C - 期間最安値)/(期間最高値 - 期間最安値)
-    slow_k = SMA(fast_k, k_smooth)          （欧米の Slow %K = 日本の「%D」に相当）
-    slow_d = SMA(slow_k, d_period)          （欧米の Slow %D = 日本の「スローD(SD)」に相当）
-    日本の証券会社の「ファスト」= (fast_k, SMA3(fast_k))、「スロー」= (SMA3(fast_k), SMA3(SMA3(fast_k)))。
+    slow_k = SMA(fast_k, k_smooth)          （欧米の Slow %K。k_smooth=d_period=3 なら Fast %D と同じ）
+    slow_d = SMA(slow_k, d_period)          （欧米の Slow %D）
+    注意: 日本の証券会社に多い定義（野村證券など）の %D は「分子・分母を別々に m 日合計してから割る」形で、
+    欧米の Slow %K（%K の単純平均）とは近いが別物。日本式は stochastic_jp() を使う。
     """
     hh = high.rolling(k_period).max()
     ll = low.rolling(k_period).min()
@@ -181,6 +188,22 @@ def stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
     slow_k = fast_k.rolling(k_smooth).mean()
     slow_d = slow_k.rolling(d_period).mean()
     return pd.DataFrame({"fast_k": fast_k, "slow_k": slow_k, "slow_d": slow_d})
+
+
+def stochastic_jp(high: pd.Series, low: pd.Series, close: pd.Series,
+                  n: int = 9, m: int = 3, y: int = 3) -> pd.DataFrame:
+    """日本の証券会社で多いストキャスティクス（野村證券の用語集などの定義。n=5 や 9、m=y=3 が多い）。
+    %K = 100*(C - n日最安値)/(n日最高値 - n日最安値)
+    %D = 100*Σ_m(C - n日最安値) / Σ_m(n日最高値 - n日最安値)   ← 分子・分母を m 日ずつ合計してから割る
+    SD = SMA(%D, y)                                             （スロー%D）
+    レンジ（分母）が日々変わるため、欧米の Slow %K = SMA(%K, m) とは一致しない。
+    """
+    hh, ll = high.rolling(n).max(), low.rolling(n).min()
+    num, den = close - ll, hh - ll
+    k = 100.0 * num / den.where(den != 0)
+    den_sum = den.rolling(m).sum()
+    d = 100.0 * num.rolling(m).sum() / den_sum.where(den_sum != 0)
+    return pd.DataFrame({"k": k, "d": d, "sd": d.rolling(y).mean()})
 
 
 def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
@@ -474,6 +497,11 @@ def ichimoku(high: pd.Series, low: pd.Series, close: pd.Series,
     先読みを含まない。 chikou は「その日の位置に描かれる遅行スパン」= 将来の終値であり、
     シグナル判定に使うと先読みになる（判定には close と close.shift(displacement) を比べる）。
     未来側の雲（最新日より先）は返さない。
+
+    シフト本数の流儀差: displacement=26 は MT4/MT5 流（計算日の26本先／26本前に描く）。
+    日本の数え方（「本日を含めて26日」＝計算日の25本先／25本前、楽天証券の説明など）や、
+    TradingView（offset=displacement-1）に合わせるには displacement=25 を指定する。
+    詳細と出典は ../02_japan/02_ichimoku_kinko_hyo.md の 3.1 節。
     """
     tk = (high.rolling(tenkan).max() + low.rolling(tenkan).min()) / 2.0
     kj = (high.rolling(kijun).max() + low.rolling(kijun).min()) / 2.0
