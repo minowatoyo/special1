@@ -16,7 +16,7 @@
 | J-Quants API V2 | 上場銘柄一覧、株価日足・午前終値、指数・TOPIX・先物・オプション、投資部門別売買状況、信用取引残高、空売り比率・報告、売買内訳、財務サマリー・詳細、配当、決算発表予定日、適時開示インデックス、営業日カレンダー、EDINET 由来の大株主等 | 日足に調整後の列（`AdjC`・`AdjVo`）がある。調整の範囲（分割のみか配当を含むか）は未確認 | あり（1 分足、5・15 分足は分足から算出）。取得可能範囲はプランで異なる | README は「現在は有償版サービス」と記載。無料プランの有無は未確認。プラン別のデータ期間と API は公式の spec ページ（README が案内） | 個人投資家向けサービス。API キー認証。レートリミットがあり超過で HTTP 429（`_range` 系は並列で叩く）。再配布・商用の可否は要確認 | [TL-101] |
 | JPX の公開統計・データ | 投資部門別売買状況、信用取引残高、空売り集計、上場会社一覧など（⚠M） | 非該当 | 非該当 | 取引所サイトで公開されていると記憶（⚠M）。形式・更新頻度は未確認 | 取引所データの再配布条件は要確認 | [TL-127] |
 | EDINET API（金融庁） | 有価証券報告書・四半期報告書・大量保有報告書・公開買付関連などの開示書類（CSV 変換、inline XBRL、XBRL インスタンス） | 非該当 | 非該当 | 無料の API キーが必要（第三者ライブラリ edinet-tools の README） | 利用条件は公式で要確認 | [TL-102] |
-| TDnet（適時開示） | 決算短信・業績予想修正・配当予想修正などの開示と XBRL | 非該当 | 非該当 | 第三者ライブラリ tdnet の README: 既定の取得元は**非公式**の「やのしん WEB-API」、不通時は release.tdnet.info に切替。XBRL／PDF は release.tdnet.info 上で約 30〜40 日で削除され、JPX の恒久 URL へ自動切替。既定は 1 秒に 1 リクエスト。J-Quants V2 にも適時開示の一覧・ファイル・一括取得がある | 非公式 API の可用性と規約は未確認 | [TL-103] [TL-101] |
+| TDnet（適時開示） | 決算短信・業績予想修正・配当予想修正などの開示と XBRL。第三者ライブラリ tdnet の README: 既定の取得元は**非公式**の「やのしん WEB-API」で、不通時は release.tdnet.info に切り替える。J-Quants V2 にも適時開示の一覧・ファイル・一括取得がある | 非該当 | 非該当 | 未確認（tdnet ライブラリは API キー不要と README に記載） | README: XBRL／PDF は release.tdnet.info 上で約 30〜40 日で削除され、JPX の恒久 URL へ自動で切り替わる。既定は 1 秒に 1 リクエスト。非公式 API の可用性と規約は未確認 | [TL-103] [TL-101] |
 | Yahoo 系（Yahoo!ファイナンス、yfinance） | 日米等の株価。日本株のティッカーは `.T` の接尾辞と記憶（⚠M） | yfinance は既定で配当調整済み（`auto_adjust=True`）。生の終値が欲しいときは設定を変える | 取得可（保持期間は要確認） | 無料。非公式 | README: yfinance は Yahoo と無関係の非公式ツールで研究・教育目的、Yahoo の API は個人利用のみ。Yahoo!ファイナンス（日本）の規約は未確認 | [TL-106] |
 | Stooq | 日本株の接尾辞は `.jp` と記憶（⚠M） | 未確認 | 未確認 | 未確認 | pandas-datareader 0.11.1 の README は Stooq を挙げておらず、PyPI に `stooq` の名前は見つからなかった。現行の取得可否は未確認 | [TL-107] |
 | 日本銀行 時系列統計データ検索サイトの API | 日銀の時系列統計。Code API（系列コード指定）・Layer API（階層指定）・Metadata API の 3 種（第三者ライブラリ boj-api の README） | 非該当 | 非該当 | 認証キーの記述は README になし | README は「このサービスは日銀の API 機能を使用しており、内容は日銀が保証したものではない」旨のクレジット文言を掲載。日銀側で表記が義務かは未確認 | [TL-104] |
@@ -67,7 +67,7 @@
 ### 4.3 タイムゾーンと日米データの結合
 
 - 東証は日本標準時（UTC+9、夏時間なし）。米国の終値は東部時間 16:00（標準時は翌朝 6:00 JST、夏時間は 5:00 JST）に確定する。
-- **暦日で結合すると先読みになる**: 東京の D 日の引け（15:30 JST）の時点では、米国の D 日の終値はまだ存在しない。使えるのは米国の D−1 日（東部時間）の終値で、東京の D 日の寄付前に確定している。逆に、米国 D 日の終値を東京 D+1 日の始値で取引する設計は因果的に成立する。
+- **暦日で結合すると先読みになる**: 東京の D 日の引けの時点では、米国の D 日の終値はまだ存在しない。使えるのは米国の D−1 日（東部時間）の終値で、東京の D 日の寄付前に確定している。逆に、米国 D 日の終値を東京 D+1 日の始値で取引する設計は因果的に成立する。
 - 米国の祝日と東京の祝日はずれる。結合後に欠損を前方補完するのは、約定可否と無関係な価格を持ち越すので慎重に扱う。
 - Twelve Data は `timezone`（UTC／Exchange／IANA）を選べる（README [TL-114]）。ベンダーの日足の日付が現地日付か UTC かは必ず確認する。分足はバー時刻が開始か終了か、11:30〜12:30 の休憩の扱いも確認する。exchange_calendars はオークション時間を閉場扱いにする（README [TL-118]）。
 
@@ -127,9 +127,9 @@
 | TL-120 | PyPI: ibapi 9.81.1.post1 | — | 2020 | — | ✅S | license 欄に非商用／商用ライセンスの記載 |
 | TL-121 | PyPI: ib_async 2.1.0 | — | 2025 | — | ✅S | 概要のみ |
 | TL-122 | PyPI: pandas_market_calendars 5.6.0 | — | 2026 | https://github.com/rsheftel/pandas_market_calendars | ✅S | README: exchange_calendars のミラー |
-| TL-123 | The Delisting Bias in CRSP Data | Tyler Shumway／Journal of Finance | 1997 | https://consensus.app/papers/details/8a726f253774536482f55e4e75289a3a/ | ✅S | DOI 10.1111/j.1540-6261.1997.tb03818.x。要旨のみ確認 |
-| TL-124 | The cross-section of stock returns and survivorship bias: Evidence from delisted stocks | James L. Davis／Quarterly Review of Economics and Finance | 1996 | https://consensus.app/papers/details/626d77ec05ba58a7a0a34c6d7390dbe3/ | ✅S | DOI 10.1016/s1062-9769(96)90021-6。要旨のみ確認 |
-| TL-125 | Survivorship Bias in Emerging Market Small-Cap Indices: Evidence from India's NIFTY Smallcap 250 | Harjot Singh Ranse／arXiv | 2026 | https://consensus.app/papers/details/efc208bf0822533aba484c73787a83b0/ | ✅S | DOI 10.48550/arxiv.2603.19380。プレプリント（査読前）。要旨のみ確認 |
-| TL-126 | Does survivorship bias really matter? An empirical investigation into its effects on the mean reversion of share returns on the JSE (1984–2007) | E. Gilbert, D. Strugnell／Investment Analysts Journal | 2010 | https://consensus.app/papers/details/4e2e5e0cb4f5552686d79a072a8e292b/ | ✅S | DOI 10.1080/10293523.2010.11082521。要旨のみ確認 |
+| TL-123 | The Delisting Bias in CRSP Data | Tyler Shumway／Journal of Finance | 1997 | — | ✅S | DOI 10.1111/j.1540-6261.1997.tb03818.x。論文検索の書誌・要旨のみ確認 |
+| TL-124 | The cross-section of stock returns and survivorship bias: Evidence from delisted stocks | James L. Davis／Quarterly Review of Economics and Finance | 1996 | — | ✅S | DOI 10.1016/s1062-9769(96)90021-6。論文検索の書誌・要旨のみ確認 |
+| TL-125 | Survivorship Bias in Emerging Market Small-Cap Indices: Evidence from India's NIFTY Smallcap 250 | Harjot Singh Ranse／arXiv | 2026 | — | ✅S | DOI 10.48550/arxiv.2603.19380。プレプリント（査読前）。論文検索の書誌・要旨のみ確認 |
+| TL-126 | Does survivorship bias really matter? An empirical investigation into its effects on the mean reversion of share returns on the JSE (1984–2007) | E. Gilbert, D. Strugnell／Investment Analysts Journal | 2010 | — | ✅S | DOI 10.1080/10293523.2010.11082521。論文検索の書誌・要旨のみ確認 |
 | TL-127 | 日本の取引所・公的機関・証券会社サービスに関する一般知識（JPX 統計、東証の休業日・基準値段の調整・出来高の定義、kabuステーション API、立花証券 e支店、楽天証券の Excel 連携、e-Stat のアプリケーション ID、指数の権利） | 日本取引所グループ、各社・各機関 | — | — | ⚠M | 記憶のみ。ページ未確認。要公式確認 |
 

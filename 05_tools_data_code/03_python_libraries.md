@@ -9,7 +9,7 @@
 - 取得: `curl https://pypi.org/pypi/<package>/json` を 2026-11-09 に実行し、`info` の version・requires_python・license・classifiers・project_urls、`urls` の upload_time_iso_8601・filename、README 本文（`info.description`）を読んだ。出典表の URL 列は各パッケージの Homepage／Project URL。
 - 「最新版リリース日」は最新版のファイルのうち最も早いアップロード日（UTC）。最終リリースから 730 日以上経過したものは年数を括弧で示し【保守注意】を付けた（古い＝使えないではないが、pandas・numpy の更新に追随していない可能性がある）。
 - 「3.13」列: **W** = cp313 または abi3 の wheel あり／**P** = 純 Python wheel（py3-none-any）あり／**△** = wheel はあるが cp313 向けは無い（sdist からビルド）／**S** = sdist のみ（ビルドが必要）。
-- 「実測」は本セッションのサンドボックス（Linux x86_64、Python 3.13.18、pip 26.2.2）で `pip install` と合成データでの最小実行を行った 1 回の観測であり、他 OS・実データ・全 API の保証ではない（TL-236）。
+- 「実測」は本セッションのサンドボックス（Linux x86_64、Python 3.13.18、pip 26.2.2）で `pip install` と合成データでの最小実行を行った 1 回の観測であり、他 OS・実データ・全 API の保証ではない [TL-236]。
 
 ## 2. 参照実装向け: Python 3.13 での 6 パッケージ
 
@@ -203,7 +203,6 @@ mpf.plot(df, type="candle", mav=(5, 10), volume=True, savefig="chart.png")
 | TL-231 | PyPI: pyfolio-reloaded 0.10.2 | Quantopian Inc | 2026 | https://ml4trading.io | ✅S | PyPI JSON 実測 |
 | TL-232 | PyPI: pytest 9.2.0 | Brianna Laugher ほか | 2026 | https://docs.pytest.org/en/latest/ | ✅S | PyPI JSON 実測 |
 | TL-233 | PyPI: hypothesis 6.170.15 | — | 2026 | https://hypothesis.works | ✅S | PyPI JSON 実測 |
-
 | TL-234 | PyPI JSON（6 節の表の各パッケージ） | 各パッケージの作者 | — | — | ✅S | 個別 URL は省略（取得 2026-11-09） |
 | TL-235 | PyPI JSON 照会（404 を確認した名前の一覧） | PyPI | 2026 | — | ✅S | 取得 2026-11-09 |
 | TL-236 | サンドボックス実測（pip install・pip dry-run・合成データでの最小実行・RSI 比較） | 本調査（Linux x86_64、Python 3.13.18、pip 26.2.2） | 2026 | — | ✅S | 実行ログは作業領域のみでリポジトリには含めない。1 回の観測 |

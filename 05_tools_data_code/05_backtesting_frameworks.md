@@ -148,12 +148,12 @@ pandas 3.1.1／numpy 2.5.4 で合成データに対して実行できること�
 | TL-414 | PyPI: lumibot 4.6.48 | Robert Grzesik | 2026 | https://github.com/Lumiwealth/lumibot | ✅S | PyPI JSON 実測 |
 | TL-415 | PyPI: FinRL 0.3.7 | AI4Finance Foundation | 2024 | https://github.com/AI4Finance-Foundation/FinRL | ✅S | PyPI JSON 実測 |
 | TL-416 | PyPI: fastquant 0.1.8.1 | Lorenzo Ampil | 2023 | https://github.com/enzoampil/fastquant | ✅S | PyPI JSON 実測 |
-| TL-417 | Data-Snooping, Technical Trading Rule Performance, and the Bootstrap | Ryan Sullivan, A. Timmermann, H. White／Journal of Finance | 1999 | https://consensus.app/papers/details/d44e019194235c9e94e158ebd482f2a1/ | ✅S | DOI 10.1111/0022-1082.00163。要旨のみ確認 |
-| TL-418 | The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality | David H. Bailey, Marcos M. López de Prado／Journal of Portfolio Management | 2014 | https://consensus.app/papers/details/378afd063fd15487a4fcb21af0850767/ | ✅S | DOI 10.3905/jpm.2014.40.5.094。要旨のみ確認 |
-| TL-419 | The probability of back-test over-fitting | David H. Bailey, J. Borwein ほか／SSRN 版 | 2016 | https://consensus.app/papers/details/f5ef21e8509b544fba76ccc9aa2de55c/ | ✅S | DOI 10.2139/ssrn.2326253。プレプリント。要旨のみ確認 |
-| TL-420 | All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance on a Large Cohort of Trading Algorithms | Thomas V. Wiecki, Andrew Campbell ほか／Journal of Investing | 2016 | https://consensus.app/papers/details/cbf1b88914f55668987babb345905af4/ | ✅S | DOI 10.3905/joi.2016.25.3.069。要旨のみ確認 |
-| TL-421 | Technical Trading Revisited: False Discoveries, Persistence Tests, and Transaction Costs | P. Bajgrowicz, O. Scaillet／Journal of Financial Economics | 2012 | https://consensus.app/papers/details/132354490e9a5a0a9fecaa045a94b6b0/ | ✅S | DOI 10.1016/j.jfineco.2012.06.001。要旨のみ確認 |
-| TL-422 | No pain, no gain: You should always incorporate trading costs for a bias-free evaluation of trading rule overperformance | D. Anghel／Economics Letters | 2022 | https://consensus.app/papers/details/3c1b4c9bea85500380ea18a864b58441/ | ✅S | DOI 10.1016/j.econlet.2022.110584。要旨のみ確認 |
+| TL-417 | Data-Snooping, Technical Trading Rule Performance, and the Bootstrap | Ryan Sullivan, A. Timmermann, H. White／Journal of Finance | 1999 | — | ✅S | DOI 10.1111/0022-1082.00163。論文検索の書誌・要旨のみ確認 |
+| TL-418 | The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality | David H. Bailey, Marcos M. López de Prado／Journal of Portfolio Management | 2014 | — | ✅S | DOI 10.3905/jpm.2014.40.5.094。論文検索の書誌・要旨のみ確認 |
+| TL-419 | The probability of back-test over-fitting | David H. Bailey, J. Borwein ほか／SSRN 版 | 2016 | — | ✅S | DOI 10.2139/ssrn.2326253。プレプリント。論文検索の書誌・要旨のみ確認 |
+| TL-420 | All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance on a Large Cohort of Trading Algorithms | Thomas V. Wiecki, Andrew Campbell ほか／Journal of Investing | 2016 | — | ✅S | DOI 10.3905/joi.2016.25.3.069。論文検索の書誌・要旨のみ確認 |
+| TL-421 | Technical Trading Revisited: False Discoveries, Persistence Tests, and Transaction Costs | P. Bajgrowicz, O. Scaillet／Journal of Financial Economics | 2012 | — | ✅S | DOI 10.1016/j.jfineco.2012.06.001。論文検索の書誌・要旨のみ確認 |
+| TL-422 | No pain, no gain: You should always incorporate trading costs for a bias-free evaluation of trading rule overperformance | D. Anghel／Economics Letters | 2022 | — | ✅S | DOI 10.1016/j.econlet.2022.110584。論文検索の書誌・要旨のみ確認 |
 | TL-423 | サンドボックス実測（pip install・合成データでの最小実行・pip dry-run・タイミング計測） | 本調査（Linux x86_64、Python 3.13.18） | 2026 | — | ✅S | 実行ログは作業領域のみでリポジトリには含めない。1 回の観測 |
 | TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | — | ⚠M | 記憶のみ。数値は記載せず、02_japan/04 と JPX 公式で要確認 |
 

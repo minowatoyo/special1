@@ -63,7 +63,7 @@
 | パッケージ | 最新版 | 公開日（time[latest]） | license | 概要（要約） | 備考 | 出典 |
 |---|---|---|---|---|---|---|
 | charting_library | 1.0.2 | 2019-11-22（7.0 年前） | ISC | npm 上の同名パッケージ | maintainers は zhuwenbo、2019-11 公開の 3 版、repository・homepage なし。**TradingView 名義ではない**ので TradingView の Charting Library と混同しない。 【保守注意】 | [TL-323] |
-| highcharts-stock | 0.1.7 | 2018-01-15（8.8 年前） | CC | react-highcharts 用モジュール（旧） | deprecated 表示、2018-01 の 0.1.7 のみ、作者 kirjs。Highcharts 公式の Stock 版ではない。 【保守注意】 | [TL-324] |
+| highcharts-stock | 0.1.7 | 2018-01-15（8.8 年前） | CC | react-highcharts 用モジュール（旧） | deprecated 表示、2018-01 の 0.1.7 のみ、作者 kirjs。Highsoft 名義ではない。 【保守注意】 | [TL-324] |
 
 ## 5. 他言語（レジストリで確認できた範囲）
 
@@ -155,5 +155,4 @@
 | TL-337 | NuGet: TALib.NETCore 0.5.0 | — | 2025 | https://hmg3.github.io/TA-Lib.NETCore | ✅S | NuGet 実測 |
 | TL-338 | NuGet: Trady.Core 3.2.9 | — | 2020 | https://github.com/lppkarl/Trady | ✅S | NuGet 実測 |
 | TL-339 | Maven Central: org.ta4j:ta4j-core 0.28.0 | — | 2026 | https://repo1.maven.org/maven2/org/ta4j/ta4j-core/maven-metadata.xml | ✅S | Maven Central 実測 |
-
 | TL-340 | TradingView Charting Library（製品の配布形態・ライセンス） | TradingView | — | — | ⚠M | 記憶のみ。ページ未確認。要公式確認 |
