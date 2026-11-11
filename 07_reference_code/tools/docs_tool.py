@@ -20,13 +20,13 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from urllib.parse import urlparse
 
-TAGS = ("✅S", "⚠M", "❓")
+TAGS = ("✅P", "✅S", "⚠M", "❓")
 SRC_HEADER = ["ID", "資料名", "著者・発行元", "年", "URL", "検証", "メモ"]
 ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d{2,3}$")
 CITE_RE = re.compile(r"\[([A-Z][A-Z0-9]*-\d{2,3})\]")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 REQUIRED_SECTIONS = ["関連文書", "この文書の限界", "出典"]
-CONTENT_DIRS = ("01_techniques", "02_japan", "03_evidence", "04_learning", "05_tools_data_code")
+CONTENT_DIRS = ("01_techniques", "02_japan", "03_evidence", "04_learning", "05_tools_data_code", "08_primary_sources")
 LOW_KB, HIGH_KB = 3, 40
 
 
@@ -132,6 +132,10 @@ def lint(root: Path) -> int:
             url = r["url"]
             if url != "—" and not re.match(r"^https?://\S+$", url):
                 problems.append(f"{rel}: {i} の URL 形式が不正: {url!r}")
+            if r["tag"] == "✅P" and url == "—":
+                problems.append(f"{rel}: {i} は ✅P なのに URL がない（取得したページの URL を書く）")
+            if r["tag"] == "✅P" and "sha256" not in r["note"]:
+                warns.append(f"{rel}: {i} は ✅P だがメモに sha256 がない（取得物の同一性を残す規則）")
             if r["tag"] == "⚠M" and url != "—":
                 problems.append(f"{rel}: {i} は ⚠M なのに URL がある（記憶由来に URL を付けない規則）")
             if r["tag"] == "❓" and url != "—":
@@ -177,21 +181,22 @@ def build_sources(root: Path, out: Path) -> None:
         "",
         "| タグ | 意味 |",
         "|---|---|",
-        "| ✅S | 検索結果・論文データベース・パッケージレジストリ（PyPI/npm）の応答に現れ、書名・著者・年などの書誌情報が整合することを確認した。**全文・原ページは読んでいない**（外部サイトの直接取得がこの作業環境では遮断されていたため）。 |",
+        "| ✅P | **一次資料（公式ページ・PDF・目録レコード）を実際に取得して読み、記載の事実を原文と照合した**。取得日と sha256 の先頭をメモ欄に残している。 |",
+        "| ✅S | 検索結果・論文データベース・パッケージレジストリ（PyPI/npm）の応答に現れ、書名・著者・年などの書誌情報が整合することを確認した。**全文・原ページは読んでいない**。 |",
         "| ⚠M | 作成時の記憶に基づく。広く知られた古典など存在を強く確信できるものに限るが、今回の作業で再確認していない。URL は付けていない。 |",
         "| ❓ | 不確実。人手での確認が必要。 |",
         "",
         "## ファイル別の件数",
         "",
-        "| ファイル | 合計 | ✅S | ⚠M | ❓ |",
-        "|---|---:|---:|---:|---:|",
+        "| ファイル | 合計 | ✅P | ✅S | ⚠M | ❓ |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
     domains: Counter = Counter()
     review: dict[str, list[dict]] = defaultdict(list)
     for rel, rows in per_file.items():
         c = Counter(r["tag"] for r in rows)
         total.update(c)
-        lines.append(f"| `{rel}` | {len(rows)} | {c['✅S']} | {c['⚠M']} | {c['❓']} |")
+        lines.append(f"| `{rel}` | {len(rows)} | {c['✅P']} | {c['✅S']} | {c['⚠M']} | {c['❓']} |")
         for r in rows:
             if r["tag"] in ("⚠M", "❓"):
                 review[rel].append(r)
@@ -203,8 +208,8 @@ def build_sources(root: Path, out: Path) -> None:
             uniq.setdefault(r["id"], r["tag"])
     n = sum(total.values())
     uc = Counter(uniq.values())
-    lines.append(f"| **合計（延べ）** | **{n}** | **{total['✅S']}** | **{total['⚠M']}** | **{total['❓']}** |")
-    lines.append(f"| **一意な出典（ID で重複排除）** | **{len(uniq)}** | **{uc['✅S']}** | **{uc['⚠M']}** | **{uc['❓']}** |")
+    lines.append(f"| **合計（延べ）** | **{n}** | **{total['✅P']}** | **{total['✅S']}** | **{total['⚠M']}** | **{total['❓']}** |")
+    lines.append(f"| **一意な出典（ID で重複排除）** | **{len(uniq)}** | **{uc['✅P']}** | **{uc['✅S']}** | **{uc['⚠M']}** | **{uc['❓']}** |")
     lines += ["", "## 人手での確認を推奨する資料（⚠M / ❓）", ""]
     if not review:
         lines.append("（なし）")
@@ -220,7 +225,7 @@ def build_sources(root: Path, out: Path) -> None:
               "- 台帳は各文書の出典表から機械的に集計したもので、URL の到達性は確認していない（作業環境からは外部サイトに接続できなかった）。",
               "- ✅S は書誌情報の整合を確認したことを意味し、内容の正しさや全文の精読を意味しない。", ""]
     out.write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {out}  (延べ {n} 件 / 一意 {len(uniq)} 件: ✅S {uc['✅S']} / ⚠M {uc['⚠M']} / ❓ {uc['❓']})")
+    print(f"wrote {out}  (延べ {n} 件 / 一意 {len(uniq)} 件: ✅P {uc['✅P']} / ✅S {uc['✅S']} / ⚠M {uc['⚠M']} / ❓ {uc['❓']})")
 
 
 def main() -> int:
