@@ -6,43 +6,49 @@
 
 | タグ | 意味 |
 |---|---|
-| ✅S | 検索結果・論文データベース・パッケージレジストリ（PyPI/npm）の応答に現れ、書名・著者・年などの書誌情報が整合することを確認した。**全文・原ページは読んでいない**（外部サイトの直接取得がこの作業環境では遮断されていたため）。 |
+| ✅P | **一次資料（公式ページ・PDF・目録レコード）を実際に取得して読み、記載の事実を原文と照合した**。取得日と sha256 の先頭をメモ欄に残している。 |
+| ✅S | 検索結果・論文データベース・パッケージレジストリ（PyPI/npm）の応答に現れ、書名・著者・年などの書誌情報が整合することを確認した。**全文・原ページは読んでいない**。 |
 | ⚠M | 作成時の記憶に基づく。広く知られた古典など存在を強く確信できるものに限るが、今回の作業で再確認していない。URL は付けていない。 |
 | ❓ | 不確実。人手での確認が必要。 |
 
 ## ファイル別の件数
 
-| ファイル | 合計 | ✅S | ⚠M | ❓ |
-|---|---:|---:|---:|---:|
-| `01_techniques/01_price_structure.md` | 31 | 30 | 1 | 0 |
-| `01_techniques/02_chart_patterns.md` | 27 | 26 | 1 | 0 |
-| `01_techniques/03_candlesticks.md` | 22 | 22 | 0 | 0 |
-| `01_techniques/04_waves_fibonacci_wyckoff_gann.md` | 26 | 26 | 0 | 0 |
-| `01_techniques/05_practitioner_frameworks.md` | 32 | 29 | 3 | 0 |
-| `01_techniques/06_moving_averages.md` | 29 | 26 | 3 | 0 |
-| `01_techniques/07_oscillators_momentum.md` | 26 | 22 | 4 | 0 |
-| `01_techniques/08_volatility_and_trend_strength.md` | 22 | 19 | 3 | 0 |
-| `01_techniques/09_volume_breadth_sentiment.md` | 35 | 29 | 6 | 0 |
-| `01_techniques/10_alt_charts_relative_strength_mtf.md` | 24 | 20 | 4 | 0 |
-| `02_japan/01_sakata_gohou.md` | 24 | 24 | 0 | 0 |
-| `02_japan/02_ichimoku_kinko_hyo.md` | 32 | 32 | 0 | 0 |
-| `02_japan/03_other_japanese_methods.md` | 17 | 17 | 0 | 0 |
-| `02_japan/04_tse_market_rules_and_chart_effects.md` | 45 | 45 | 0 | 0 |
-| `02_japan/05_supply_demand_indicators.md` | 36 | 36 | 0 | 0 |
-| `03_evidence/01_academic_literature.md` | 134 | 119 | 15 | 0 |
-| `03_evidence/02_methodology_behavioral_japan_ml.md` | 75 | 70 | 5 | 0 |
-| `04_learning/01_books_english.md` | 42 | 42 | 0 | 0 |
-| `04_learning/02_books_japanese.md` | 20 | 7 | 13 | 0 |
-| `04_learning/03_online_courses_and_sites.md` | 23 | 15 | 8 | 0 |
-| `04_learning/04_organizations_journals_certifications.md` | 25 | 11 | 14 | 0 |
-| `04_learning/05_study_roadmap.md` | 4 | 4 | 0 | 0 |
-| `05_tools_data_code/01_charting_platforms_and_screeners.md` | 24 | 21 | 3 | 0 |
-| `05_tools_data_code/02_data_sources.md` | 29 | 28 | 1 | 0 |
-| `05_tools_data_code/03_python_libraries.md` | 36 | 36 | 0 | 0 |
-| `05_tools_data_code/04_javascript_and_other_libraries.md` | 40 | 39 | 1 | 0 |
-| `05_tools_data_code/05_backtesting_frameworks.md` | 24 | 23 | 1 | 0 |
-| **合計（延べ）** | **904** | **818** | **86** | **0** |
-| **一意な出典（ID で重複排除）** | **891** | **806** | **85** | **0** |
+| ファイル | 合計 | ✅P | ✅S | ⚠M | ❓ |
+|---|---:|---:|---:|---:|---:|
+| `01_techniques/01_price_structure.md` | 31 | 0 | 30 | 1 | 0 |
+| `01_techniques/02_chart_patterns.md` | 27 | 0 | 26 | 1 | 0 |
+| `01_techniques/03_candlesticks.md` | 22 | 0 | 22 | 0 | 0 |
+| `01_techniques/04_waves_fibonacci_wyckoff_gann.md` | 26 | 0 | 26 | 0 | 0 |
+| `01_techniques/05_practitioner_frameworks.md` | 32 | 0 | 29 | 3 | 0 |
+| `01_techniques/06_moving_averages.md` | 29 | 0 | 26 | 3 | 0 |
+| `01_techniques/07_oscillators_momentum.md` | 26 | 0 | 22 | 4 | 0 |
+| `01_techniques/08_volatility_and_trend_strength.md` | 22 | 0 | 19 | 3 | 0 |
+| `01_techniques/09_volume_breadth_sentiment.md` | 35 | 0 | 29 | 6 | 0 |
+| `01_techniques/10_alt_charts_relative_strength_mtf.md` | 24 | 0 | 20 | 4 | 0 |
+| `02_japan/01_sakata_gohou.md` | 24 | 0 | 24 | 0 | 0 |
+| `02_japan/02_ichimoku_kinko_hyo.md` | 32 | 0 | 32 | 0 | 0 |
+| `02_japan/03_other_japanese_methods.md` | 17 | 0 | 17 | 0 | 0 |
+| `02_japan/04_tse_market_rules_and_chart_effects.md` | 63 | 26 | 37 | 0 | 0 |
+| `02_japan/05_supply_demand_indicators.md` | 55 | 23 | 32 | 0 | 0 |
+| `03_evidence/01_academic_literature.md` | 134 | 0 | 119 | 15 | 0 |
+| `03_evidence/02_methodology_behavioral_japan_ml.md` | 75 | 0 | 70 | 5 | 0 |
+| `03_evidence/03_japanese_literature.md` | 60 | 60 | 0 | 0 | 0 |
+| `04_learning/01_books_english.md` | 42 | 0 | 42 | 0 | 0 |
+| `04_learning/02_books_japanese.md` | 20 | 17 | 3 | 0 | 0 |
+| `04_learning/03_online_courses_and_sites.md` | 23 | 0 | 15 | 8 | 0 |
+| `04_learning/04_organizations_journals_certifications.md` | 28 | 4 | 11 | 13 | 0 |
+| `04_learning/05_study_roadmap.md` | 4 | 0 | 4 | 0 | 0 |
+| `05_tools_data_code/01_charting_platforms_and_screeners.md` | 24 | 0 | 21 | 3 | 0 |
+| `05_tools_data_code/02_data_sources.md` | 39 | 12 | 26 | 1 | 0 |
+| `05_tools_data_code/03_python_libraries.md` | 36 | 0 | 36 | 0 | 0 |
+| `05_tools_data_code/04_javascript_and_other_libraries.md` | 40 | 0 | 39 | 1 | 0 |
+| `05_tools_data_code/05_backtesting_frameworks.md` | 24 | 1 | 23 | 0 | 0 |
+| `08_primary_sources/00_index.md` | 3 | 3 | 0 | 0 | 0 |
+| `08_primary_sources/01_jpx_primary.md` | 70 | 70 | 0 | 0 | 0 |
+| `08_primary_sources/02_ndl_cinii_jstage.md` | 50 | 50 | 0 | 0 | 0 |
+| `08_primary_sources/03_company_filings_toyota_sumitomo.md` | 7 | 7 | 0 | 0 | 0 |
+| **合計（延べ）** | **1144** | **273** | **800** | **71** | **0** |
+| **一意な出典（ID で重複排除）** | **1081** | **223** | **788** | **70** | **0** |
 
 ## 人手での確認を推奨する資料（⚠M / ❓）
 
@@ -141,24 +147,6 @@
 | EV2-074 | Prospect theory, mental accounting, and momentum | M. Grinblatt, B. Han | 2005 | ⚠M | JFE。含み益/含み損の保有者行動とモメンタム。記憶のみ |
 | EV2-075 | Empirical asset pricing via machine learning | S. Gu, B. Kelly, D. Xiu | 2020 | ⚠M | RFS。ML資産価格の基準文献として想起。記憶のみ |
 
-### `04_learning/02_books_japanese.md`
-
-| ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
-|---|---|---|---|---|---|
-| LR-043 | 日本テクニカル分析大全 | 日本テクニカルアナリスト協会 編 | — | ⚠M | 版元・年は記憶／未確認 |
-| LR-044 | 一目均衡表 | 細田悟一（一目山人）／経済変動総研 | — | ⚠M | 全七巻と記憶。年は未確認 |
-| LR-046 | マーケットのテクニカル分析 | Murphy 邦訳／パンローリング | — | ⚠M | 邦訳版の年・版は未確認 |
-| LR-047 | ワイルダーのテクニカル分析入門 | Wilder 邦訳／パンローリング | — | ⚠M | 同上 |
-| LR-048 | 投資苑 | Elder 邦訳／パンローリング | — | ⚠M | 同上。続編は『投資苑2』 |
-| LR-049 | オニールの成長株発掘法 | O'Neil 邦訳／パンローリング | — | ⚠M | 同上 |
-| LR-050 | ミネルヴィニの成長株投資法 | Minervini 邦訳／パンローリング | — | ⚠M | 同上 |
-| LR-051 | マーケットの魔術師 | Schwager 邦訳／パンローリング | — | ⚠M | 原著は1989年と記憶 |
-| LR-052 | ファイナンス機械学習 | López de Prado 邦訳 | — | ⚠M | 出版社未確認 |
-| LR-053 | ウォール街のランダム・ウォーカー | Malkiel 邦訳／日本経済新聞出版 | — | ⚠M | 版数は未確認 |
-| LR-054 | 禁断の市場 | Mandelbrot 邦訳／東洋経済新報社 | — | ⚠M | 年は未確認 |
-| LR-055 | まぐれ | Taleb 邦訳／ダイヤモンド社 | — | ⚠M | 年は未確認 |
-| LR-056 | ファスト&スロー | Kahneman 邦訳／早川書房 | — | ⚠M | 文庫版の有無は未確認 |
-
 ### `04_learning/03_online_courses_and_sites.md`
 
 | ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
@@ -178,7 +166,7 @@
 |---|---|---|---|---|---|
 | LR-078 | CMT Association（旧 MTA） | CMT Association | — | ⚠M | 名称変更の時期は LR-110 で確認（2017年7月）。他の事項は未確認 |
 | LR-079 | International Federation of Technical Analysts | IFTA | — | ⚠M | 加盟団体・資格・誌は記憶 |
-| LR-080 | 日本テクニカルアナリスト協会 | NTAA | — | ⚠M | 設立年・事業内容は未確認 |
+| LR-080 | 日本テクニカルアナリスト協会 | NTAA | — | ⚠M | 設立年・事業内容は未確認。機関誌の存在と発行元は PB-101 で確認 |
 | LR-081 | 日本証券アナリスト協会 | SAAJ | — | ⚠M | CMA制度・機関誌は記憶 |
 | LR-082 | 国別協会（英国 STA 等） | 各協会 | — | ⚠M | 名称は記憶 |
 | LR-083 | CMT 資格 | CMT Association | — | ⚠M | 試験構成・要件は未確認 |
@@ -188,8 +176,7 @@
 | LR-087 | Journal of Technical Analysis | MTA | — | ⚠M | 刊行状況は未確認 |
 | LR-088 | IFTA Journal | IFTA | — | ⚠M | 刊行状況は未確認 |
 | LR-089 | Technical Analysis of Stocks & Commodities | 米国の出版社（社名は未確認） | — | ⚠M | 連載名は記憶 |
-| LR-091 | 証券アナリストジャーナル | 日本証券アナリスト協会 | — | ⚠M | 刊行状況は未確認 |
-| LR-092 | 会社四季報、日経ヴェリタス、ダイヤモンドZAi、日経マネー | 東洋経済新報社、日本経済新聞社、ダイヤモンド社、日経BP | — | ⚠M | 発行元は記憶 |
+| LR-092 | 会社四季報、日経ヴェリタス、ダイヤモンドZAi、日経マネー | 東洋経済新報社、日本経済新聞社、ダイヤモンド社、日経BP | — | ⚠M | 発行元は記憶（会社四季報・日経マネーは PB-102・PB-103 で確認。他は未確認） |
 
 ### `05_tools_data_code/01_charting_platforms_and_screeners.md`
 
@@ -203,7 +190,7 @@
 
 | ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
 |---|---|---|---|---|---|
-| TL-127 | 日本の取引所・公的機関・証券会社サービスに関する一般知識（JPX 統計、東証の休業日・基準値段の調整・出来高の定義、kabuステーション API、立花証券 e支店、楽天証券の Excel 連携、e-Stat のアプリケーション ID、指数の権利） | 日本取引所グループ、各社・各機関 | — | ⚠M | 記憶のみ。ページ未確認。要公式確認 |
+| TL-127 | 日本の取引所・公的機関・証券会社サービスに関する一般知識（出来高の定義、kabuステーション API、立花証券 e支店、楽天証券の Excel 連携、e-Stat のアプリケーション ID、指数の権利） | 日本取引所グループ、各社・各機関 | — | ⚠M | 記憶のみ。ページ未確認。要公式確認（JPX 統計・東証の休業日・基準値段の調整は PJ-060／PJ-054／PJ-012 で ✅P に置換済み） |
 
 ### `05_tools_data_code/04_javascript_and_other_libraries.md`
 
@@ -211,23 +198,20 @@
 |---|---|---|---|---|---|
 | TL-340 | TradingView Charting Library（製品の配布形態・ライセンス） | TradingView | — | ⚠M | 記憶のみ。ページ未確認。要公式確認 |
 
-### `05_tools_data_code/05_backtesting_frameworks.md`
-
-| ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
-|---|---|---|---|---|---|
-| TL-424 | 東証の売買制度（売買単位、取引時間、板寄せ、値幅制限、呼値、配当落ちの基準値段調整） | 日本取引所グループ | — | ⚠M | 記憶のみ。呼値・値幅の数値は記載せず、02_japan/04 と JPX 公式で要確認 |
-
 ## URL のドメイン別件数
 
 | ドメイン | 件数 |
 |---|---:|
 | consensus.app | 278 |
+| jpx.co.jp | 140 |
+| cir.nii.ac.jp | 73 |
 | github.com | 65 |
+| ndlsearch.ndl.go.jp | 47 |
 | chartschool.stockcharts.com | 19 |
-| jpx.co.jp | 19 |
 | luxalgo.com | 15 |
 | oanda.jp | 13 |
 | matsui.co.jp | 12 |
+| jstage.jst.go.jp | 12 |
 | en.wikipedia.org | 11 |
 | wiley-vch.de | 11 |
 | daiwa.jp | 9 |
@@ -242,6 +226,7 @@
 | smbcnikko.co.jp | 4 |
 | media.moneyforward.com | 4 |
 | ml4trading.io | 4 |
+| sumitomoelectric.com | 4 |
 | optuma.com | 3 |
 | nexusfi.com | 3 |
 | ta-lib.org | 3 |
@@ -255,6 +240,7 @@
 | oreilly.com | 3 |
 | store.stockcharts.com | 3 |
 | schweitzer-online.de | 3 |
+| global.toyota | 3 |
 | stockcharts.com | 2 |
 | prorealcode.com | 2 |
 | gaitame.com | 2 |
@@ -275,8 +261,6 @@
 | goodreads.com | 2 |
 | openlibrary.org | 2 |
 | press.princeton.edu | 2 |
-| opac.lib.hit-u.ac.jp | 2 |
-| wowma.jp | 2 |
 | s.minkabu.jp | 2 |
 | minkabu.jp | 2 |
 | pandas-datareader.readthedocs.io | 2 |
@@ -352,7 +336,6 @@
 | katalog.bg.usz.edu.pl | 1 |
 | tenlong.com.tw | 1 |
 | agendabookshop.com | 1 |
-| cir.nii.ac.jp | 1 |
 | ci.nii.ac.jp | 1 |
 | mypivots.com | 1 |
 | cmtassociation.org | 1 |

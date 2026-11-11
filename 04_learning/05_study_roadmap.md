@@ -2,7 +2,7 @@
 > 要約: テクニカル分析を「定義→計算→売買ルール→検証→自動化」の4段階で学ぶ道筋を、読む資料（本リポジトリの文書と書籍）、実習、到達チェックリストの形で示した。
 > 中核の考え方は、手法を信じる前に規則化して検証することである。研究では有効性の評価が割れ、検定の不備も指摘されている[LR-098]。
 > 期間の目安は編者の判断で、根拠となる研究はない。書籍IDは 01_books_english.md と 02_books_japanese.md、論文IDは本ファイルの出典表を参照。
-> 最終更新: 2026-11-09
+> 最終更新: 2026-11-11
 
 ## 1. 全体像
 
@@ -33,7 +33,7 @@
 3. [../01_techniques/06_moving_averages.md](../01_techniques/06_moving_averages.md) → [07_oscillators_momentum.md](../01_techniques/07_oscillators_momentum.md) → [08_volatility_and_trend_strength.md](../01_techniques/08_volatility_and_trend_strength.md) → [09_volume_breadth_sentiment.md](../01_techniques/09_volume_breadth_sentiment.md)
 4. [../02_japan/04_tse_market_rules_and_chart_effects.md](../02_japan/04_tse_market_rules_and_chart_effects.md): 東証の制度がチャートに与える影響
 
-書籍: 入門 LR-005 または LR-001、定義の辞典 LR-015、ローソク足 LR-009。邦訳は 02_books_japanese.md（LR-046 など、記憶ベース）。用語固定には 03_online_courses_and_sites.md の用語集。
+書籍: 入門 LR-005 または LR-001、定義の辞典 LR-015、ローソク足 LR-009。邦訳は 02_books_japanese.md（LR-046 など。国立国会図書館の書誌で確認済み）。用語固定には 03_online_courses_and_sites.md の用語集。
 
 実習:
 
@@ -204,7 +204,7 @@
 - 期間の目安、チェックリスト、実習の設計は編者の判断で、学習効果を検証した研究に基づくものではない。
 - 論文は論文データベースの記録（要旨）に基づき、本文は読んでいない。集計値（95研究のうち56・20・19など）は要旨の記述で、版により異なる。
 - 参照先の ../01_techniques/、../02_japan/、../03_evidence/、../05_tools_data_code/ の本文は精読しておらず、見出しと出典表の一部を確認したのみである。リンク先の見出しや用語が異なる場合は、各文書を優先する。
-- 書籍IDの書誌は 01_books_english.md の検証範囲に限られ、日本語書籍は記憶ベースである。
+- 書籍IDの書誌は、英語書が 01_books_english.md の検索結果、日本語書籍が 02_books_japanese.md の国立国会図書館の書誌（2026-11-11 確認）の範囲に限られる。いずれも本文は未読で、内容の評価ではない。
 - 日本語の学習資源（書籍・サイト・協会）の検証は検索の利用上限により行えていない。
 
 ## 出典
