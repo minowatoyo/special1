@@ -190,3 +190,44 @@ def test_report_builds_with_all_sections(tmp_path, null_run):
     report.plot_fan(a, fc, tmp_path / "fan.png")
     report.plot_calibration(wf, dec, tmp_path / "cal.png")
     assert (tmp_path / "fan.png").stat().st_size > 10000 and (tmp_path / "cal.png").stat().st_size > 5000
+
+
+# ---- 改訂仕様 v0.2 FIX-01/02/09 ----
+def test_features_ret5_ret21_use_daily_sigma_without_double_sqrt_h():
+    """FIX-09(1): ret5/ret21 は日次 σ1 で割り √n で規格化する。一定ボラの iid なら標準偏差はほぼ 1。"""
+    rng = np.random.default_rng(1)
+    n = 6000
+    r = rng.normal(0, 0.012, n)
+    c = 100 * np.exp(np.cumsum(r))
+    df = pd.DataFrame({"open": c, "high": c * 1.002, "low": c * 0.998, "close": c, "volume": 1e6}, index=pd.bdate_range("2000-01-03", periods=n))
+    f = features.feature_frame(df)
+    for col in ("ret5", "ret21"):
+        assert 0.9 < f[col].iloc[1000:].std() < 1.1
+
+
+def test_loc_mode_default_unchanged_and_modes_run():
+    """FIX-01/02: 既定は縮小なしの過去平均（d=h·m）。centered はドリフトを変えず、centered_shrink は 0.5 倍にする。"""
+    df = synth.make_garch_ohlcv(n=1800, seed=3)
+    out = {}
+    for mode in ("raw", "centered", "centered_shrink"):
+        cfg = Config(step=40, boot_b=50, loc_mode=mode)
+        a = prepare_asset(df, "x", cfg)
+        out[mode] = (a.drift_scale, walk_forward(a, cfg))
+    assert Config().loc_mode == "raw" and out["raw"][0] == 1.0 and out["centered"][0] == 1.0 and out["centered_shrink"][0] == 0.5
+    h = 21
+    d_raw, d_cen, d_shr = (out[m][1][h]["diag"]["drift"] for m in ("raw", "centered", "centered_shrink"))
+    ok = np.isfinite(d_raw)
+    assert np.allclose(d_raw[ok], d_cen[ok]) and np.allclose(d_shr[ok], 0.5 * d_raw[ok])
+    for m in out:
+        dg = out[m][1][h]["diag"]
+        assert {"drift", "z_mean", "z_median", "v3_mean", "v3_median", "t3_mean", "t3_median"} <= set(dg)
+
+
+def test_ridge_scale_by_assets_flag_changes_penalty_only_when_set():
+    """FIX-09(3): 既定はパネルの銘柄数で罰則を変えない。フラグを立てると銘柄数に比例して強くなる（単独銘柄なら同一）。"""
+    df = synth.make_garch_ohlcv(n=1500, seed=5)
+    cfg0 = Config(step=60, boot_b=30)
+    cfg1 = Config(step=60, boot_b=30, ridge_scale_by_assets=True)
+    a0, a1 = prepare_asset(df, "x", cfg0), prepare_asset(df, "x", cfg1)
+    r0, r1 = walk_forward(a0, cfg0), walk_forward(a1, cfg1)
+    assert np.allclose(np.nan_to_num(r0[21]["scale"]), np.nan_to_num(r1[21]["scale"]))

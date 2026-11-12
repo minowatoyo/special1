@@ -1,6 +1,5 @@
+# J-Quants 由来のデータ（生・加工済み・DB）は、規約上、リポジトリに入れない。解約時は scripts/jquants/purge.sh で一括削除する。
+data/jquants/
+*.parquet
 __pycache__/
-*.pyc
 .pytest_cache/
-.venv/
-venv/
-.DS_Store

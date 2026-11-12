@@ -57,6 +57,10 @@ class Config:
     seed: int = 20261111
     finite_sample: bool = True  # 分位点の有限標本補正（stats.predictive_taus）
     overlap_eff: float = 1.5    # 重なりのある標本の有効な数 = overlap_eff × 標本数 ÷ h
+    loc_mode: str = "raw"       # 位置の扱い（FIX-02）: "raw"=現行（h·m、中心化なし）／"centered"=標準化残差の標本平均を引く／
+                                # "centered_shrink"=centered ＋ 過去平均を drift_shrink 倍に縮小
+    drift_shrink: float = 0.5   # loc_mode="centered_shrink" のときの過去平均の縮小係数（事前固定）
+    ridge_scale_by_assets: bool = False   # FIX-09(3): パネル推定のリッジ罰則を、プールした銘柄数で比例して強める
     record_at: tuple = ()       # 分位点格子を保存する時点（検査用）
 
 
@@ -76,6 +80,7 @@ class Asset:
     knn_cols: list
     aux_names: list = field(default_factory=list)
     mbar: np.ndarray | None = None      # その時点までの日次対数リターンの平均（過去平均）
+    drift_scale: float = 1.0            # 過去平均に掛ける係数（loc_mode による）
 
 
 class SortedBuf:
@@ -84,12 +89,14 @@ class SortedBuf:
     def __init__(self, cap: int):
         self.a = np.empty(cap + 1)
         self.n = 0
+        self.total = 0.0
 
     def bulk(self, vals) -> None:
         v = np.asarray(vals, dtype=float)
         v = np.sort(v[np.isfinite(v)])
         self.n = len(v)
         self.a[: self.n] = v
+        self.total = float(v.sum())
 
     def add(self, x: float) -> None:
         if not np.isfinite(x):
@@ -98,6 +105,10 @@ class SortedBuf:
         self.a[pos + 1: self.n + 1] = self.a[pos: self.n]
         self.a[pos] = x
         self.n += 1
+        self.total += float(x)
+
+    def mean(self) -> float:
+        return self.total / self.n if self.n else float("nan")
 
     def view(self) -> np.ndarray:
         return self.a[: self.n]
@@ -131,7 +142,8 @@ def prepare_asset(df: pd.DataFrame, name: str, cfg: Config, aux: dict | None = N
         sets["X1"] = sets["T3"] + extra
     knn_cols = [x for x in KNN_FEATURES if x in usable]
     return Asset(name=name, df=df, dates=df.index.to_numpy(), close=c.to_numpy(dtype=float), sig=sig,
-                 R=R, MH=MH, ML=ML, Fraw=fraw, F=f, sets=sets, knn_cols=knn_cols, aux_names=aux_names, mbar=mbar)
+                 R=R, MH=MH, ML=ML, Fraw=fraw, F=f, sets=sets, knn_cols=knn_cols, aux_names=aux_names, mbar=mbar,
+                 drift_scale=cfg.drift_shrink if cfg.loc_mode == "centered_shrink" else 1.0)
 
 
 def _cum_normal_eq(x: np.ndarray, y: np.ndarray, ok: np.ndarray):
@@ -146,7 +158,7 @@ def _design(asset: Asset, cols: list, h: int):
     """定数項つきの計画行列、目的変数（S3 で標準化した先 h 日リターン）、有効行。"""
     n = len(asset.close)
     x = np.column_stack([np.ones(n)] + [asset.F[c].to_numpy(dtype=float) for c in cols]) if cols else np.ones((n, 1))
-    y = (asset.R[h] - h * asset.mbar) / asset.sig[h]["S3"]
+    y = (asset.R[h] - asset.drift_scale * h * asset.mbar) / asset.sig[h]["S3"]
     ok = np.isfinite(x).all(axis=1) & np.isfinite(y)
     return x, y, ok
 
@@ -166,7 +178,8 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
     for h in cfg.horizons:
         R = asset.R[h]
         s = asset.sig[h]
-        drift = h * asset.mbar                                  # 過去平均による h 日ぶんの傾き（時点 t で確定）
+        drift = asset.drift_scale * h * asset.mbar              # 過去平均による h 日ぶんの傾き（時点 t で確定）
+        centered = cfg.loc_mode in ("centered", "centered_shrink")
         z = {m: (R - drift) / s[m] for m in ("S1", "S2", "S3")}
         s3 = s["S3"]
         fin = np.flatnonzero(np.isfinite(s3) & np.isfinite(s["S1"]))
@@ -188,7 +201,7 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
             cxa, cya, _ = _cum_normal_eq(xa, ya, oka)
             known = a.dates[h:]                      # 行 t の結果が確定する日付（t = 0..n_a-h-1）
             pan.append((cxa, cya, known))
-        lam = h / (cfg.tau0 ** 2)
+        lam0 = h / (cfg.tau0 ** 2)
         # --- 類似局面用 ---
         kx = asset.F[asset.knn_cols].to_numpy(dtype=float) if asset.knn_cols else np.empty((n, 0))
         ok_k = np.isfinite(kx).all(axis=1) & np.isfinite(z["S3"]) if asset.knn_cols else np.zeros(n, bool)
@@ -205,6 +218,7 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
         if "T3" in tilt_names and asset.knn_cols:
             models.append("E1")
         crps = {m: np.full(n, np.nan) for m in models}
+        diag = {k: np.full(n, np.nan) for k in ("drift", "z_mean", "z_median", "v3_mean", "v3_median", "t3_mean", "t3_median")}
         pit = {m: np.full(n, np.nan) for m in models}
         pup = {m: np.full(n, np.nan) for m in models}
         mu_rec = {m: np.full(n, np.nan) for m in tilt_names}
@@ -240,7 +254,8 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
                                 pi = [pool_idx.index(i) for i in ci]
                                 axx += cxa[j][np.ix_(pi, pi)]
                                 axy += cya[j][pi]
-                    pen = lam * np.eye(len(ci))
+                    n_pool = 1 + (sum(1 for _, _, kn in pan if int(np.searchsorted(kn, asset.dates[T], side="right")) > 0) if m != "X1" else 0)
+                    pen = lam0 * (n_pool if cfg.ridge_scale_by_assets else 1) * np.eye(len(ci))
                     pen[0, 0] = 0.0
                     try:
                         beta = np.linalg.solve(axx + pen, axy)
@@ -254,9 +269,9 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
             grids = {}
             pt = {k: (st.predictive_taus(taus, cfg.overlap_eff * bufs[k].n / h) if cfg.finite_sample else taus) for k in bufs}
             grids["B0"] = st.sorted_quantiles(bufs["B0"].view(), pt["B0"])
-            zq3 = st.sorted_quantiles(bufs["V3"].view(), pt["V3"])
-            grids["B1"] = drift[T] + s["S1"][T] * st.sorted_quantiles(bufs["B1"].view(), pt["B1"])
-            grids["V2"] = drift[T] + s["S2"][T] * st.sorted_quantiles(bufs["V2"].view(), pt["V2"])
+            zq3 = st.sorted_quantiles(bufs["V3"].view(), pt["V3"]) - (bufs["V3"].mean() if centered else 0.0)
+            grids["B1"] = drift[T] + s["S1"][T] * (st.sorted_quantiles(bufs["B1"].view(), pt["B1"]) - (bufs["B1"].mean() if centered else 0.0))
+            grids["V2"] = drift[T] + s["S2"][T] * (st.sorted_quantiles(bufs["V2"].view(), pt["V2"]) - (bufs["V2"].mean() if centered else 0.0))
             grids["V3"] = drift[T] + s3[T] * zq3
             for m in tilt_names:
                 b = tilt[m]["beta"]
@@ -264,10 +279,10 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
                 if b is None or not np.isfinite(xr).all() or tilt[m]["buf"].n < cfg.min_fit:
                     grids[m] = np.full(cfg.q, np.nan)
                 else:
-                    mu = float(xr @ b)
+                    mu = float(xr[1:] @ b[1:]) if centered else float(xr @ b)    # centered では切片を使わない（二重処理の回避）
                     mu_rec[m][T] = mu
                     tm = st.predictive_taus(taus, cfg.overlap_eff * tilt[m]["buf"].n / h) if cfg.finite_sample else taus
-                    grids[m] = drift[T] + s3[T] * (mu + st.sorted_quantiles(tilt[m]["buf"].view(), tm))
+                    grids[m] = drift[T] + s3[T] * (mu + st.sorted_quantiles(tilt[m]["buf"].view(), tm) - (tilt[m]["buf"].mean() if centered else 0.0))
             nb_info = None
             if asset.knn_cols:
                 mcount = int(np.searchsorted(k_rows, last, side="right"))
@@ -280,12 +295,19 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
                     rows_nb = np.sort(k_rows[nb])
                     n_clu = 1 + int((np.diff(rows_nb) > h).sum())          # 時間的に離れた近傍のかたまりの数
                     tn = st.predictive_taus(taus, n_clu) if cfg.finite_sample else taus
-                    grids["K1"] = drift[T] + s3[T] * (cfg.knn_blend * st.sorted_quantiles(zn, tn) + (1 - cfg.knn_blend) * zq3)
+                    znq = st.sorted_quantiles(zn, tn) - (bufs["V3"].mean() if centered else 0.0)
+                    grids["K1"] = drift[T] + s3[T] * (cfg.knn_blend * znq + (1 - cfg.knn_blend) * zq3)
                     nb_info = (k_rows[nb], np.sqrt(d2[nb]))
                 else:
                     grids["K1"] = np.full(cfg.q, np.nan)
             if "E1" in models:
                 grids["E1"] = (grids["V3"] + grids["T3"] + grids["K1"]) / 3.0
+            diag["drift"][T] = drift[T]
+            diag["z_mean"][T] = bufs["V3"].mean()
+            diag["z_median"][T] = float(np.median(bufs["V3"].view())) if bufs["V3"].n else np.nan
+            diag["v3_mean"][T], diag["v3_median"][T] = float(np.mean(grids["V3"])), float(np.median(grids["V3"]))
+            if "T3" in grids and np.isfinite(grids["T3"]).all():
+                diag["t3_mean"][T], diag["t3_median"][T] = float(np.mean(grids["T3"])), float(np.median(grids["T3"]))
             # --- 採点 ---
             if last >= 0 and T + h < n and (T - start) % cfg.step == 0 and np.isfinite(R[T]):
                 y = R[T]
@@ -319,7 +341,7 @@ def walk_forward(asset: Asset, cfg: Config, panel: tuple = ()) -> dict:
                     "n_eligible": bufs["V3"].n,
                 }
         out[h] = {"h": h, "start": start, "models": models, "taus": taus, "crps": crps, "pit": pit, "pup": pup,
-                  "scale": s["S1"], "drift": drift,
+                  "scale": s["S1"], "drift": drift, "diag": diag,
                   "R": R, "s3": s3, "mu": mu_rec, "knn_dist": knn_dist, "touch": touch, "recorded": recorded,
                   "final": final, "dates": asset.dates, "step": cfg.step}
     return out
