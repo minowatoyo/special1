@@ -268,7 +268,7 @@ class FakeClient:
         self.calls.append((path, params.get("date")))
         if self.interrupt_at and len(self.calls) == self.interrupt_at:
             raise KeyboardInterrupt
-        seq = self.script.get((path, params.get("date")), [(200, [{"x": 1}], 1)])
+        seq = self.script.get((path, params.get("date")), [(200, [{"x": 1, "Date": params.get("date")}], 1)])
         st, rows, pages = seq[0] if len(seq) == 1 else seq.pop(0)
         self.last_pages, self.last_files = pages, [f"{path}/{params.get('date')}/p{i}.json" for i in range(pages)]
         return st, rows
@@ -351,3 +351,40 @@ def test_estimate_scales_with_days_and_includes_daily_master():
 
 def test_backfill_cannot_start_before_oldest_date():
     assert backfill.OLDEST.isoformat() == "2016-11-12"
+
+
+def test_end_date_is_previous_business_day():
+    from datetime import date
+    assert backfill.prev_business_day(date(2026, 11, 12)) == date(2026, 11, 11)     # 木 → 水
+    assert backfill.prev_business_day(date(2026, 11, 9)) == date(2026, 11, 6)       # 月 → 前の金
+    assert backfill.prev_business_day(date(2026, 11, 14)) == date(2026, 11, 13)     # 土 → 金
+    assert backfill.prev_business_day(date(2026, 11, 15)) == date(2026, 11, 13)     # 日 → 金
+
+
+def test_unresolved_zero_row_day_is_logged_and_does_not_stop_the_rest(tmp_path):
+    jobs = jobs3()
+    bad = ("/v2/equities/bars/daily", "2024-01-04")
+    c = FakeClient({bad: [(200, [], 1)]})
+    st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    assert st["ok"] == len(jobs) - 1 and st["fail"] == {"/v2/equities/bars/daily": 1}
+    inv = backfill.load_investigate(tmp_path)
+    assert [(i["path"], i["date"], i["reason"]) for i in inv] == [(bad[0], bad[1], "unresolved_after_retries")]
+    assert backfill.jkey(bad[0], {"date": bad[1]}) not in backfill.load_checkpoint(tmp_path)    # 正常な 0 行として記録しない
+    import report_w3
+    rep = report_w3.main(tmp_path)
+    assert rep["investigate"]["count"] == 1 and rep["investigate"]["list"][0]["date"] == "2024-01-04"
+    c2 = FakeClient({})                                                                       # 後で解消すれば再実行で完了し、一覧から消える
+    backfill.run_jobs(c2, jobs, tmp_path, sleep=lambda s: None)
+    assert report_w3.main(tmp_path)["investigate"]["count"] == 0
+
+
+def test_master_date_mismatch_is_flagged(tmp_path):
+    jobs = jobs3()
+    wrong = ("/v2/equities/master", "2024-01-05")
+    c = FakeClient({wrong: [(200, [{"Date": "2024-01-04"}, {"Date": "2024-01-05"}], 1)]})
+    st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    r = backfill.load_checkpoint(tmp_path)[backfill.jkey(wrong[0], {"date": wrong[1]})]
+    assert r["date_mismatch"] == 1 and st["date_mismatch"] == 1
+    import report_w3
+    lst = report_w3.main(tmp_path)["investigate"]["list"]
+    assert any(x["reason"] == "date_mismatch" and x["date"] == "2024-01-05" for x in lst)

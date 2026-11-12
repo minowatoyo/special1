@@ -6,6 +6,8 @@
 実行前に契約上の取得可能期間を再確認する。実測値 2016-11-12 と違えば、開始日を変えずに停止して報告する。
 チェックポイント（_meta/checkpoint.jsonl）は、1 件の取得が全ページそろって成功した後にだけ追記する。失敗は未完了のまま残り、
 正常な 0 行とは区別される（銘柄日足・上場銘柄表・指数が営業日に 0 行なら失敗扱い）。再実行は未完了分だけを取る。429 が出たら停止する。
+終了日は実行日の前営業日（当日分は未確定）。3 周しても解消しない日は全体を止めず「要調査」（_meta/investigate.jsonl）に記録して残りを進める。
+上場銘柄表・銘柄日足・指数は、返った日付が要求日と一致するか検証し、不一致は date_mismatch として記録する。
 
   python scripts/jquants/backfill.py              # 計画（期間・エンドポイント・リクエスト数・所要時間・容量）だけ表示。通信なし
   python scripts/jquants/backfill.py --execute    # 実取得（鍵は環境変数 JQUANTS_API_KEY）
@@ -32,6 +34,7 @@ MAX_PASSES = 3
 MB_PER_DAY = {"/v2/equities/bars/daily": 1.2, "/v2/equities/master": 1.5, "/v2/fins/summary": 0.3, "/v2/indices/bars/daily": 0.01}
 MUST_HAVE_ROWS = {"/v2/equities/bars/daily", "/v2/equities/master", "/v2/indices/bars/daily", "/v2/equities/earnings-calendar"}
 CAL_PATH = "/v2/indices/bars/daily/topix"
+DATE_CHECKED = {"/v2/equities/master", "/v2/equities/bars/daily", "/v2/indices/bars/daily"}
 
 
 class ContractChanged(RuntimeError):
@@ -62,6 +65,43 @@ def append_checkpoint(root: Path, rec: dict) -> None:
         fh.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
         fh.flush()
         os.fsync(fh.fileno())
+
+
+def prev_business_day(today: date) -> date:
+    """実行日の前営業日（土日を除く。祝日は後段の TOPIX 営業日で自然に落ちる）。当日分は未確定なので取得しない。"""
+    d = date.fromordinal(today.toordinal() - 1)
+    while d.weekday() >= 5:
+        d = date.fromordinal(d.toordinal() - 1)
+    return d
+
+
+def log_investigate(root: Path, path: str, params: dict, reason: str, detail: str = "") -> None:
+    p = root / "_meta" / "investigate.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"path": path, "date": params.get("date"), "reason": reason, "detail": detail,
+                             "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, ensure_ascii=False) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def load_investigate(root: Path) -> list:
+    p = root / "_meta" / "investigate.jsonl"
+    out = []
+    if p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                pass
+    return out
+
+
+def date_mismatches(path: str, params: dict, rows: list) -> int:
+    """返ってきた行の日付が要求日と一致しない件数（銘柄日足・上場銘柄表・指数日足）。"""
+    if path not in DATE_CHECKED or not params.get("date"):
+        return 0
+    return sum(1 for r in rows if str(r.get("Date", ""))[:10] != params["date"])
 
 
 def check_contract(client: Client, oldest: date = OLDEST) -> str:
@@ -126,6 +166,11 @@ def run_jobs(client: Client, jobs: list, root: Path, sleep=time.sleep) -> dict:
             if not rows:
                 rec["zero_rows"] = True
                 stats["zero_rows_accepted"] += 1
+            mm = date_mismatches(path, params, rows)
+            if mm:
+                rec["date_mismatch"] = mm
+                stats["date_mismatch"] = stats.get("date_mismatch", 0) + 1
+                log_investigate(root, path, params, "date_mismatch", f"{mm}/{len(rows)} 行の日付が要求日と不一致")
             append_checkpoint(root, rec)
             stats["ok"] += 1
             stats["rows"][path] = stats["rows"].get(path, 0) + len(rows)
@@ -136,6 +181,7 @@ def run_jobs(client: Client, jobs: list, root: Path, sleep=time.sleep) -> dict:
         sleep(30)
     for path, params, _ in todo:
         stats["fail"][path] = stats["fail"].get(path, 0) + 1
+        log_investigate(root, path, params, "unresolved_after_retries", "0 行または HTTP 失敗が 3 周しても解消しない")
     stats["failed_jobs"] = [jkey(p, q) for p, q, _ in todo]
     return stats
 
@@ -145,10 +191,12 @@ def main() -> None:
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--root", default="data/jquants")
     ap.add_argument("--start", default=OLDEST.isoformat())
-    ap.add_argument("--end", default=date.today().isoformat())
+    ap.add_argument("--end", default=None, help="既定は実行日の前営業日。それより後は指定できない")
     a = ap.parse_args()
     root = Path(a.root)
-    start, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
+    start = date.fromisoformat(a.start)
+    last_ok = prev_business_day(date.today())
+    end = min(date.fromisoformat(a.end), last_ok) if a.end else last_ok
     if start < OLDEST:
         sys.exit(f"開始日は {OLDEST} 以降（Standard の契約期間）")
     n_days = int((end - start).days * 245 / 365)
@@ -177,8 +225,10 @@ def main() -> None:
     except AuthError as ex:
         sys.exit(f"認証エラーで停止: {ex}")
     print(json.dumps(st, ensure_ascii=False, indent=1))
-    if st["stopped"] or st["fail"]:
-        sys.exit("未完了あり。再実行で続きから取得します")
+    if st["stopped"]:
+        sys.exit("429 で停止。再実行で続きから取得します")
+    if st["fail"] or st.get("date_mismatch"):
+        print("要調査の日付あり（_meta/investigate.jsonl。report_w3.py に一覧）。残りの取得は完了。")
     print("完了。次: python scripts/jquants/build_processed.py && python scripts/jquants/report_w3.py")
 
 

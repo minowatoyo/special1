@@ -66,8 +66,22 @@ def main(root: Path) -> dict:
     topix = out / "topix_daily.parquet"
     if topix.exists():
         days = [d.date() for d in pd.read_parquet(topix)["date"]]
-        todo = [j for j in backfill.plan(days) if backfill.jkey(j[0], j[1]) not in ck]
-        rep["resume_check"] = {"planned": len(backfill.plan(days)), "remaining_if_rerun": len(todo)}
+        plan = backfill.plan(days)
+        todo = [j for j in plan if backfill.jkey(j[0], j[1]) not in ck]
+        inv_keys = {backfill.jkey(i["path"], {"date": i["date"]} if i["date"] else {}) for i in backfill.load_investigate(root)}
+        rest = [j for j in todo if backfill.jkey(j[0], j[1]) not in inv_keys]
+        rep["resume_check"] = {"planned": len(plan), "remaining_if_rerun": len(rest),
+                               "investigate_not_completed": len(todo) - len(rest),
+                               "note": "remaining_if_rerun は要調査に載った件を除く。要調査は再実行で再試行される"}
+    seen, lst = set(), []
+    for i in backfill.load_investigate(root):
+        k = (i["path"], i["date"], i["reason"])
+        done = backfill.jkey(i["path"], {"date": i["date"]} if i["date"] else {}) in ck
+        if k in seen or (i["reason"] == "unresolved_after_retries" and done):
+            continue
+        seen.add(k)
+        lst.append({"endpoint": i["path"], "date": i["date"], "reason": i["reason"], "detail": i["detail"]})
+    rep["investigate"] = {"count": len(lst), "list": sorted(lst, key=lambda x: (x["endpoint"], x["date"] or ""))}
     return rep
 
 
