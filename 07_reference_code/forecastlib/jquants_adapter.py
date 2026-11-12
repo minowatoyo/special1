@@ -58,12 +58,12 @@ def load_flags(code: str | int, root=None) -> pd.DataFrame:
     return f[f["code"] == _code5(code)].sort_values("date").set_index("date").drop(columns="code")
 
 
-def universe_on(date, root=None) -> list[str]:
-    """date の引け後に使える対象銘柄（プライム＋スタンダードの普通株、60 営業日平均売買代金 ≥ 5 億円）。"""
+def universe_on(date, root=None, markets=None) -> list[str]:
+    """date の引け後に使える対象銘柄（内国普通株・市場区分 markets（既定は 2022-04-04 以降のプライム＋スタンダード）・60 営業日平均売買代金 ≥ 5 億円）。"""
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "jquants"))
     import schema
-    u = schema.universe(_read("prices_daily", root), _read("listed_master", root))
+    u = schema.universe(_read("prices_daily", root), _read("listed_master", root), markets=markets or schema.POST_2022)
     return sorted(u.loc[u["date"] == pd.Timestamp(date), "code"])
 
 

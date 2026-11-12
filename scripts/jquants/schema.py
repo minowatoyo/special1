@@ -27,8 +27,11 @@ EMPTY_SLOTS = {
     "sector_indices": ["date", "index_code", "open", "high", "low", "close"],
 }
 
-PRIME, STANDARD = "0111", "0112"
-COMMON_STOCK = "011"          # 仮定: 3,890/4,449 件を占める区分。ETF・REIT・優先株を除くか、W3 の前に利用者が確認する
+PRIME, STANDARD = "0111", "0112"          # 2022-04-04 以降の市場区分
+OLD_FIRST, OLD_SECOND, OLD_JASDAQ_STD = "0101", "0102", "0106"   # 旧東証一部・二部・JASDAQ スタンダード（2022-04-01 まで。案。未確定）
+POST_2022 = (PRIME, STANDARD)
+PRE_2022_PROPOSAL = (OLD_FIRST, OLD_SECOND, OLD_JASDAQ_STD)
+DOMESTIC_STOCK = "011"                    # 公式仕様: 内国株券（優先株式等を含む）
 CUTOFF = "15:30"
 VA_MIN = 5e8                  # 60 営業日平均売買代金 ≥ 5 億円
 VA_WINDOW = 60
@@ -52,8 +55,22 @@ def normalize_prices(rows: list[dict]) -> pd.DataFrame:
     return df.drop_duplicates(["code", "date"], keep="last").sort_values(["code", "date"]).reset_index(drop=True)
 
 
+def is_domestic_common(prod_cat, code) -> pd.Series:
+    """内国普通株の判定（市場区分の判定とは別）。ProdCat=="011"（内国株券。優先株式等を含む）かつ 5 文字コードで末尾が "0"
+    （公式 FAQ: 末尾 0 が普通株）。欠損・不正なコード、ETF・REIT（別の ProdCat）、末尾が 0 でない優先株等は除く。コードは文字列のまま扱う。"""
+    pc = pd.Series(prod_cat).astype("string")
+    cd = pd.Series(code, index=pc.index).astype("string")
+    return ((pc == DOMESTIC_STOCK) & (cd.str.len() == 5) & (cd.str.endswith("0")) & cd.str.fullmatch(r"[0-9A-Z]{5}")).fillna(False).astype(bool)
+
+
+def market_in(market, allowed) -> pd.Series:
+    """市場区分の判定（普通株の判定とは別）。allowed は市場区分コードの集合。"""
+    return pd.Series(market).astype("string").isin(list(allowed)).fillna(False).astype(bool)
+
+
 def normalize_master(rows: list[dict]) -> pd.DataFrame:
     df = _rename(rows, MASTER_MAP)
+    df["code"] = df["code"].astype(str)
     df["asof"] = pd.to_datetime(df["asof"])
     return df.drop_duplicates(["asof", "code"], keep="last").sort_values(["asof", "code"]).reset_index(drop=True)
 
@@ -147,24 +164,44 @@ def quality_flags(prices: pd.DataFrame) -> pd.DataFrame:
     return p[["code", "date", "ohlc_inconsistent", "nonpositive", "no_trade", "jump_flag"]]
 
 
-def universe(prices: pd.DataFrame, master_asof: pd.DataFrame, min_history: int = 0) -> pd.DataFrame:
-    """日付ごとの対象銘柄（その時点で上場、プライム＋スタンダードの普通株、Va の 60 営業日平均 ≥ 5 億円）。
+MASTER_ATTRS = ["name", "s17", "s33", "scale_cat", "market", "margin_class", "prod_cat"]
 
-    master_asof は取得日ごとの上場銘柄表（asof, code, market, prod_cat）。各 date には、date 以前で最新の asof を使う。
-    戻り値: date, code（対象のもの）。60 営業日そろわない日は対象外。min_history は上場後の営業日数の下限。"""
+
+def master_intervals(master_daily: pd.DataFrame, calendar) -> pd.DataFrame:
+    """日次の上場銘柄表 → 銘柄ごとの有効区間（valid_from, valid_to）。属性が変わるか、営業日が欠けたら新しい区間。
+    月中の新規上場・上場廃止・市場変更が区間の端に現れる。calendar は営業日（日次の取得に欠けがないかの判定に使う）。"""
+    pos = {d: i for i, d in enumerate(sorted(pd.DatetimeIndex(calendar).unique()))}
+    m = master_daily.copy()
+    m = m[m["asof"].isin(pos)].sort_values(["code", "asof"])
+    m["_i"] = m["asof"].map(pos)
+    attrs = [c for c in MASTER_ATTRS if c in m.columns]
+    key = m[attrs].astype("string").fillna("").agg("|".join, axis=1) if attrs else pd.Series("", index=m.index)
+    m["_chg"] = (key != key.groupby(m["code"]).shift()) | (m["_i"] - m.groupby("code")["_i"].shift() != 1)
+    m["_run"] = m.groupby("code")["_chg"].cumsum()
+    g = m.groupby(["code", "_run"])
+    out = g[attrs].first()
+    out["valid_from"] = g["asof"].min()
+    out["valid_to"] = g["asof"].max()
+    return out.reset_index().drop(columns="_run").sort_values(["code", "valid_from"]).reset_index(drop=True)
+
+
+def universe(prices: pd.DataFrame, intervals: pd.DataFrame, markets=POST_2022, min_history: int = 0) -> pd.DataFrame:
+    """日付ごとの対象銘柄。フィルタは、取得とは別にここで適用する（原データは捨てない）。
+    条件: その日に上場（有効区間に含まれる）／内国普通株（is_domestic_common）／市場区分が markets のいずれか（別判定）／
+    売買代金 Va の 60 営業日平均 ≥ 5 億円／履歴 ≥ max(min_history, 60) 営業日。
+    markets は既定で 2022-04-04 以降の区分。それ以前の母集団は PRE_2022_PROPOSAL（案。未確定）を明示して渡す。"""
     p = prices.sort_values(["code", "date"]).copy()
     p["va60"] = p.groupby("code")["turnover"].transform(lambda s: s.rolling(VA_WINDOW, min_periods=VA_WINDOW).mean())
     p["hist"] = p.groupby("code").cumcount() + 1
-    m = master_asof[master_asof["market"].isin([PRIME, STANDARD]) & (master_asof["prod_cat"] == COMMON_STOCK)]
-    asofs = np.sort(m["asof"].unique())
-    keep = []
-    for d, g in p.groupby("date"):
-        i = np.searchsorted(asofs, np.datetime64(d), side="right") - 1
-        if i < 0:
-            continue
-        codes = set(m.loc[m["asof"] == asofs[i], "code"])
-        keep.append(g[g["code"].isin(codes) & (g["va60"] >= VA_MIN) & (g["hist"] >= max(min_history, VA_WINDOW))][["date", "code"]])
-    return pd.concat(keep, ignore_index=True) if keep else pd.DataFrame(columns=["date", "code"])
+    iv = intervals.copy()
+    iv["common"] = is_domestic_common(iv["prod_cat"], iv["code"]).to_numpy()
+    iv["mkt_ok"] = market_in(iv["market"], markets).to_numpy()
+    p = p.sort_values("date")
+    j = pd.merge_asof(p, iv.sort_values("valid_from")[["code", "valid_from", "valid_to", "common", "mkt_ok"]],
+                      left_on="date", right_on="valid_from", by="code", direction="backward")
+    ok = (j["valid_to"] >= j["date"]) & j["common"].fillna(False) & j["mkt_ok"].fillna(False) \
+        & (j["va60"] >= VA_MIN) & (j["hist"] >= max(min_history, VA_WINDOW))
+    return j.loc[ok, ["date", "code"]].sort_values(["date", "code"]).reset_index(drop=True)
 
 
 def benchmark_excess(adj_open: pd.Series, topix_open: pd.Series, t1, t22) -> float:

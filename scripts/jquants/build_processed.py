@@ -17,8 +17,25 @@ sys.path.insert(0, str(Path(__file__).parent))
 import schema
 
 
+def checkpoint_files(root: Path):
+    p = root / "_meta" / "checkpoint.jsonl"
+    if not p.exists():
+        return None
+    out = set()
+    for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            out.update(Path(x).resolve() for x in json.loads(line).get("files", []))
+        except ValueError:
+            pass
+    return out
+
+
 def rows_of(root: Path, slug: str):
+    """チェックポイントがあれば、完了した取得のページだけを使う（失敗・途中のページは使わない）。"""
+    only = checkpoint_files(root)
     for f in sorted((root / "raw" / slug).glob("**/*.json")):
+        if only is not None and f.resolve() not in only:
+            continue
         try:
             js = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
@@ -46,14 +63,16 @@ def main(root: Path) -> dict:
         bad = schema.reconcile_adjustment(pr)
         rep["adjustment_reconciliation_mismatches"] = len(bad)
     masters = [schema.normalize_master(rows) for _, rows in rows_of(root, "v2_equities_master")]
-    if masters:
-        save("listed_master", pd.concat(masters).drop_duplicates(["asof", "code"], keep="last").reset_index(drop=True))
     tp = [r for _, rows in rows_of(root, "v2_indices_bars_daily_topix") for r in rows]
     cal = None
     if tp:
         t = schema.normalize_index(tp, "TOPIX")
         save("topix_daily", t)
         cal = t["date"]
+    if masters:
+        md = pd.concat(masters).drop_duplicates(["asof", "code"], keep="last").reset_index(drop=True)
+        rep["listed_master_snapshots"] = int(md["asof"].nunique())
+        save("listed_master", schema.master_intervals(md, cal if cal is not None else md["asof"]))
     ix = [r for _, rows in rows_of(root, "v2_indices_bars_daily") for r in rows]
     if ix:
         save("indices_daily", schema.normalize_index(ix))

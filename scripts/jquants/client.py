@@ -45,6 +45,9 @@ class Client:
     def __init__(self, root: Path | None = None, per_min: float = 60.0, key: str | None = None):
         self.root = Path(root) if root else ROOT
         self.limiter = RateLimiter(per_min)
+        self.last_raw = ""
+        self.last_files: list = []
+        self.last_pages = 0
         self.key = key or os.environ.get("JQUANTS_API_KEY") or "proxy-injected"
         (self.root / "_meta").mkdir(parents=True, exist_ok=True)
 
@@ -80,7 +83,7 @@ class Client:
                     time.sleep(5 * (attempt + 1))
                     continue
             break
-        self._record(path, params, status, body, note)
+        self.last_raw = self._record(path, params, status, body, note)
         try:
             js = json.loads(body) if body else None
         except ValueError:
@@ -103,16 +106,25 @@ class Client:
         return str(f)
 
     def get_all(self, path: str, params: dict | None = None, note: str = "") -> tuple[int, list]:
-        """pagination_key をたどって全ページを取得し、data 配列を連結して返す。"""
+        """pagination_key をたどって全ページを取得し、data 配列を連結して返す。
+
+        200 以外、または 200 でも本文が JSON として読めないページがあれば、その時点の状態を返す（呼び出し側は失敗として扱う。
+        正常な 0 行とは区別される）。取得できたページの生データの場所は self.last_files に残る。"""
         rows, pk, status = [], None, 0
+        self.last_files = []
+        self.last_pages = 0
         while True:
             q = dict(params or {})
             if pk:
                 q["pagination_key"] = pk
             status, js, _ = self.get_page(path, q, note)
-            if status != 200 or not js:
+            self.last_files.append(self.last_raw)
+            if status == 200 and not isinstance(js, dict):
+                status = -1                      # 本文が壊れている
+            if status != 200:
                 break
-            for k, v in js.items():
+            self.last_pages += 1
+            for v in js.values():
                 if isinstance(v, list):
                     rows.extend(v)
             pk = js.get("pagination_key")

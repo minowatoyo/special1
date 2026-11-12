@@ -89,30 +89,75 @@ def test_fins_usable_never_returns_future(tmp_path):
 
 
 def master(asof, codes, market="0111", prod="011"):
-    return pd.DataFrame({"asof": pd.Timestamp(asof), "code": codes, "market": market, "prod_cat": prod})
+    return pd.DataFrame({"asof": pd.Timestamp(asof), "code": codes, "name": "n", "s17": "1", "s33": "1", "scale_cat": "-",
+                         "margin_class": "2", "market": market, "prod_cat": prod})
 
 
-def test_universe_filters_market_product_liquidity_and_delisting():
+def test_is_domestic_common_rules():
+    pc = ["011", "011", "011", "013", "014", "011", "011", "011", None, "011", "021"]
+    cd = ["72030", "72031", "130A0", "13060", "89510", "7203", "720300", None, "72030", "72 30", "10010"]
+    got = schema.is_domestic_common(pc, cd).tolist()
+    assert got == [True, False, True, False, False, False, False, False, False, False, False]
+    # コードは文字列のまま（数値化して先頭の 0 や英字を失わない）
+    assert schema.is_domestic_common(["011"], ["00010"]).tolist() == [True]
+
+
+def test_market_filter_is_separate_from_common_stock_rule():
+    pc, cd, mk = ["011", "011", "013"], ["72030", "40000", "13060"], ["0111", "0113", "0111"]
+    common = schema.is_domestic_common(pc, cd).tolist()
+    assert common == [True, True, False]
+    assert schema.market_in(mk, schema.POST_2022).tolist() == [True, False, True]
+    assert schema.market_in(["0101", "0102", "0106", "0111"], schema.PRE_2022_PROPOSAL).tolist() == [True, True, True, False]
+
+
+def test_master_intervals_ipo_delisting_and_market_change_within_month():
+    cal = pd.bdate_range("2024-03-01", "2024-03-29")
+    snaps = []
+    for i, d in enumerate(cal):
+        codes = [("10000", "0111"), ("20000", "0112")]
+        if i >= 9:
+            codes.append(("30000", "0113"))                      # 月の途中で新規上場
+        if i < 14:
+            codes.append(("40000", "0111"))                      # 月の途中で上場廃止
+        if i >= 6:
+            codes[1] = ("20000", "0111")                         # 月の途中で市場変更（スタンダード→プライム）
+        for c, m in codes:
+            snaps.append(master(d, [c], market=m))
+    iv = schema.master_intervals(pd.concat(snaps), cal)
+    g = iv.set_index("code")
+    assert len(iv[iv.code == "20000"]) == 2 and iv[iv.code == "20000"]["market"].tolist() == ["0112", "0111"]
+    assert g.loc["30000", "valid_from"] == cal[9] and g.loc["30000", "valid_to"] == cal[-1]
+    assert g.loc["40000", "valid_from"] == cal[0] and g.loc["40000", "valid_to"] == cal[13]
+    assert len(iv[iv.code == "10000"]) == 1                      # 変化なしは 1 区間
+
+
+def test_master_intervals_gap_in_snapshots_splits_interval():
+    cal = pd.bdate_range("2024-03-01", periods=6)
+    m = pd.concat([master(d, ["10000"]) for i, d in enumerate(cal) if i != 3])
+    assert len(schema.master_intervals(m, cal)) == 2
+
+
+def test_universe_filters_market_product_code_liquidity_and_listing_dates():
     n = 80
     d = pd.bdate_range("2024-01-04", periods=n)
-    p = pd.concat([
-        pd.DataFrame({"date": d, "code": "10000", "turnover": 6e8}),                 # 流動性あり
-        pd.DataFrame({"date": d, "code": "20000", "turnover": 4e8}),                 # 流動性不足
-        pd.DataFrame({"date": d, "code": "30000", "turnover": 9e8}),                 # グロース
-        pd.DataFrame({"date": d, "code": "40000", "turnover": 9e8}),                 # ETF など
-        pd.DataFrame({"date": d[:70], "code": "50000", "turnover": 9e8}),            # 途中で上場廃止
-    ])
-    m = pd.concat([
-        master("2024-01-04", ["10000", "20000", "50000"]),
-        master("2024-01-04", ["30000"], market="0113"),
-        master("2024-01-04", ["40000"], prod="013"),
-        master("2024-04-22", ["10000", "20000"]),                                    # 後の時点では 50000 はない
-    ])
-    u = schema.universe(p, m)
-    assert u["date"].min() == d[59]                                                  # 60 営業日そろってから
-    assert set(u["code"]) == {"10000", "50000"}
+    ids = {"10000": 6e8, "20000": 4e8, "30000": 9e8, "40000": 9e8, "50000": 9e8, "60001": 9e8, "70000": 9e8}
+    p = pd.concat([pd.DataFrame({"date": d if c != "50000" else d[:70], "code": c, "turnover": v}) for c, v in ids.items()])
+    base = pd.bdate_range("2024-01-04", periods=n)
+    snaps = []
+    for i, day in enumerate(base):
+        for c, mk, pc in [("10000", "0111", "011"), ("20000", "0111", "011"), ("30000", "0113", "011"), ("40000", "0111", "013"),
+                          ("60001", "0111", "011"), ("70000", "0112", "011")]:
+            snaps.append(master(day, [c], market=mk, prod=pc))
+        if i < 70:
+            snaps.append(master(day, ["50000"]))                 # 途中で上場廃止
+    iv = schema.master_intervals(pd.concat(snaps), base)
+    u = schema.universe(p, iv)
+    assert u["date"].min() == d[59]
+    assert set(u["code"]) == {"10000", "50000", "70000"}          # 流動性不足・グロース・ETF・末尾非 0 は除外
     assert u.loc[u["code"] == "50000", "date"].max() <= d[69]
     assert (u["code"] == "10000").sum() == n - 59
+    # 市場区分は別に指定できる（旧区分の案を渡すと、0111/0112 の銘柄は対象外になる）
+    assert schema.universe(p, iv, markets=schema.PRE_2022_PROPOSAL).empty
 
 
 def test_client_never_logs_key_and_stops_on_403(tmp_path, monkeypatch):
@@ -203,3 +248,106 @@ def test_adapter_missing_table_message(tmp_path):
     from forecastlib import jquants_adapter as ja
     with pytest.raises(FileNotFoundError):
         ja.load_ohlcv("1234", root=tmp_path)
+
+
+# ---- backfill（通信なし。擬似クライアント） ----
+import backfill  # noqa: E402
+
+
+class FakeLimiter:
+    gap = 0.0
+
+
+class FakeClient:
+    """script: {(path, date): [(status, rows, pages), ...]}（呼ぶたびに先頭から消費。最後の値は繰り返す）"""
+    def __init__(self, script, interrupt_at=None):
+        self.limiter, self.script, self.calls, self.interrupt_at = FakeLimiter(), script, [], interrupt_at
+        self.last_pages, self.last_files = 0, []
+
+    def get_all(self, path, params, note=""):
+        self.calls.append((path, params.get("date")))
+        if self.interrupt_at and len(self.calls) == self.interrupt_at:
+            raise KeyboardInterrupt
+        seq = self.script.get((path, params.get("date")), [(200, [{"x": 1}], 1)])
+        st, rows, pages = seq[0] if len(seq) == 1 else seq.pop(0)
+        self.last_pages, self.last_files = pages, [f"{path}/{params.get('date')}/p{i}.json" for i in range(pages)]
+        return st, rows
+
+
+def jobs3():
+    return backfill.plan([pd.Timestamp("2024-01-04").date(), pd.Timestamp("2024-01-05").date()])
+
+
+def test_backfill_interrupt_and_resume_has_no_duplicates_or_gaps(tmp_path):
+    jobs = jobs3()
+    c1 = FakeClient({}, interrupt_at=4)
+    with pytest.raises(KeyboardInterrupt):
+        backfill.run_jobs(c1, jobs, tmp_path, sleep=lambda s: None)
+    assert len(backfill.load_checkpoint(tmp_path)) == 3
+    c2 = FakeClient({})
+    st = backfill.run_jobs(c2, jobs, tmp_path, sleep=lambda s: None)
+    assert st["done_before"] == 3 and st["ok"] == len(jobs) - 3 and not st["fail"]
+    assert len(backfill.load_checkpoint(tmp_path)) == len(jobs)
+    lines = (tmp_path / "_meta" / "checkpoint.jsonl").read_text().splitlines()
+    assert len(lines) == len(jobs) == len(set(lines))                     # 重複なし
+    c3 = FakeClient({})
+    assert backfill.run_jobs(c3, jobs, tmp_path, sleep=lambda s: None)["ok"] == 0 and not c3.calls   # 再実行で何も取らない
+
+
+def test_backfill_failure_is_not_checkpointed_and_retried(tmp_path):
+    jobs = jobs3()
+    bad = ("/v2/equities/bars/daily", "2024-01-04")
+    c = FakeClient({bad: [(500, [], 0), (200, [{"x": 1}], 1)]})
+    st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    assert not st["fail"] and st["ok"] == len(jobs)                        # 次の周回で成功
+    c = FakeClient({bad: [(500, [], 0)]})
+    tmp2 = tmp_path / "b"
+    st = backfill.run_jobs(c, jobs, tmp2, sleep=lambda s: None)
+    assert st["fail"] and any("2024-01-04" in x for x in st["failed_jobs"])
+    assert backfill.jkey(*bad[:1], {"date": bad[1]}) not in backfill.load_checkpoint(tmp2)
+
+
+def test_backfill_zero_rows_rules(tmp_path):
+    jobs = jobs3()
+    c = FakeClient({("/v2/equities/bars/daily", "2024-01-04"): [(200, [], 1)], ("/v2/fins/summary", "2024-01-04"): [(200, [], 1)]})
+    st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    assert "/v2/equities/bars/daily" in st["fail"]                         # 営業日の日足が 0 行 → 失敗（正常な 0 行にしない）
+    assert "/v2/fins/summary" not in st["fail"] and st["zero_rows_accepted"] == 1
+    ck = backfill.load_checkpoint(tmp_path)
+    assert ck[backfill.jkey("/v2/fins/summary", {"date": "2024-01-04"})]["zero_rows"] is True
+
+
+def test_backfill_records_all_pages_and_stops_on_429(tmp_path):
+    jobs = jobs3()
+    c = FakeClient({("/v2/fins/summary", "2024-01-05"): [(200, [{"x": 1}] * 5, 3)]})
+    backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    r = backfill.load_checkpoint(tmp_path)[backfill.jkey("/v2/fins/summary", {"date": "2024-01-05"})]
+    assert r["pages"] == 3 and len(r["files"]) == 3 and r["rows"] == 5
+    t2 = tmp_path / "c"
+    c = FakeClient({("/v2/equities/master", "2024-01-04"): [(429, [], 0)]})
+    st = backfill.run_jobs(c, jobs, t2, sleep=lambda s: None)
+    assert "429" in st["stopped"] and len(backfill.load_checkpoint(t2)) == 2
+
+
+def test_contract_check_stops_without_changing_start(monkeypatch):
+    class C:
+        def __init__(self, st, js): self.r = (st, js)
+        def get_page(self, *a, **k): return self.r[0], self.r[1], {}
+    ok = backfill.check_contract(C(400, {"message": "Your subscription covers the following dates: 2016-11-12 ~ ."}))
+    assert "2016-11-12" in ok
+    with pytest.raises(backfill.ContractChanged):
+        backfill.check_contract(C(400, {"message": "covers the following dates: 2017-01-04 ~ ."}))      # 期間が短くなった
+    with pytest.raises(backfill.ContractChanged):
+        backfill.check_contract(C(200, {"data": []}))                                                  # 窓が広がった
+    with pytest.raises(backfill.ContractChanged):
+        backfill.check_contract(C(500, None))
+
+
+def test_estimate_scales_with_days_and_includes_daily_master():
+    e = backfill.estimate(2451)
+    assert e["endpoints"]["/v2/equities/master"] == 2451 and 9500 < e["requests"] < 10000
+    assert 100 < e["minutes"] < 140 and 6 < e["raw_gb"] < 9
+
+
+def test_backfill_cannot_start_before_oldest_date():
+    assert backfill.OLDEST.isoformat() == "2016-11-12"
