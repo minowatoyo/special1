@@ -26,7 +26,8 @@ ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d{2,3}$")
 CITE_RE = re.compile(r"\[([A-Z][A-Z0-9]*-\d{2,3})\]")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 REQUIRED_SECTIONS = ["関連文書", "この文書の限界", "出典"]
-CONTENT_DIRS = ("01_techniques", "02_japan", "03_evidence", "04_learning", "05_tools_data_code", "08_primary_sources")
+CONTENT_DIRS = ("01_techniques", "02_japan", "03_evidence", "04_learning", "05_tools_data_code", "08_primary_sources",
+                "09_forecasting")
 LOW_KB, HIGH_KB = 3, 40
 
 

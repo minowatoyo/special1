@@ -47,8 +47,11 @@
 | `08_primary_sources/01_jpx_primary.md` | 70 | 70 | 0 | 0 | 0 |
 | `08_primary_sources/02_ndl_cinii_jstage.md` | 50 | 50 | 0 | 0 | 0 |
 | `08_primary_sources/03_company_filings_toyota_sumitomo.md` | 7 | 7 | 0 | 0 | 0 |
-| **合計（延べ）** | **1144** | **273** | **800** | **71** | **0** |
-| **一意な出典（ID で重複排除）** | **1081** | **223** | **788** | **70** | **0** |
+| `09_forecasting/01_method_review.md` | 4 | 0 | 0 | 4 | 0 |
+| `09_forecasting/02_protocol.md` | 1 | 1 | 0 | 0 | 0 |
+| `09_forecasting/03_literature_notes.md` | 107 | 0 | 107 | 0 | 0 |
+| **合計（延べ）** | **1256** | **274** | **907** | **75** | **0** |
+| **一意な出典（ID で重複排除）** | **1192** | **223** | **895** | **74** | **0** |
 
 ## 人手での確認を推奨する資料（⚠M / ❓）
 
@@ -198,12 +201,21 @@
 |---|---|---|---|---|---|
 | TL-340 | TradingView Charting Library（製品の配布形態・ライセンス） | TradingView | — | ⚠M | 記憶のみ。ページ未確認。要公式確認 |
 
+### `09_forecasting/01_method_review.md`
+
+| ID | 資料名 | 著者・発行元 | 年 | タグ | メモ |
+|---|---|---|---|---|---|
+| FC-001 | Dividend Yields and Expected Stock Returns: Alternative Procedures for Inference and Measurement | Robert J. Hodrick／Review of Financial Studies | 1992 | ⚠M | 記憶に基づく。重なりのある長期リターンの回帰を、1 期間リターンと説明変数の累積和の回帰に置き換えて検定する方法（逆回帰）。論文データベースでは記録を確認していない。合成データで、Newey–West より誤検出が少ないことは自分で確かめた |
+| FC-002 | Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing | Yoav Benjamini, Yosef Hochberg／Journal of the Royal Statistical Society B | 1995 | ⚠M | 記憶に基づく。偽発見率の制御（q 値）。今回は検索していない。金融での利用例は FM-039・EV2-006 |
+| FC-003 | The Stationary Bootstrap | Dimitris N. Politis, Joseph P. Romano／Journal of the American Statistical Association | 1994 | ⚠M | 記憶に基づく。ブロック長が幾何分布に従う再標本化。Reality Check（EV2-001）と損失差の検定に使う。今回は検索していない |
+| FC-004 | RiskMetrics Technical Document | J.P. Morgan／Reuters | 1996 | ⚠M | 記憶に基づく。日次の EWMA の減衰係数 0.94。論文データベースでは記録が出なかった（03_literature_notes.md の 3 節）。減衰係数の最適値は予測期間で変わるという比較は FM-083 |
+
 ## URL のドメイン別件数
 
 | ドメイン | 件数 |
 |---|---:|
-| consensus.app | 278 |
-| jpx.co.jp | 140 |
+| consensus.app | 384 |
+| jpx.co.jp | 141 |
 | cir.nii.ac.jp | 73 |
 | github.com | 65 |
 | ndlsearch.ndl.go.jp | 47 |
@@ -377,6 +389,7 @@
 | pybroker.com | 1 |
 | nautilustrader.io | 1 |
 | vnpy.com | 1 |
+| econpapers.repec.org | 1 |
 
 ## 関連文書
 
