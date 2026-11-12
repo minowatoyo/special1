@@ -388,3 +388,22 @@ def test_master_date_mismatch_is_flagged(tmp_path):
     import report_w3
     lst = report_w3.main(tmp_path)["investigate"]["list"]
     assert any(x["reason"] == "date_mismatch" and x["date"] == "2024-01-05" for x in lst)
+
+
+def test_build_excludes_date_mismatch_rows_but_keeps_raw(tmp_path):
+    import json
+    import build_processed
+    root = tmp_path
+    raw = root / "raw" / "v2_equities_master" / "2024-02-01"
+    raw.mkdir(parents=True)
+    f = raw / "a_0.json"
+    row = lambda d, c: {"Date": d, "Code": c, "CoName": "n", "Mkt": "0111", "ProdCat": "011"}  # noqa: E731
+    f.write_text(json.dumps({"data": [row("2024-01-05", "10000"), row("2024-01-04", "20000")]}))     # 要求日は 2024-01-05
+    (root / "_meta").mkdir()
+    (root / "_meta" / "checkpoint.jsonl").write_text(json.dumps(
+        {"path": "/v2/equities/master", "params": {"date": "2024-01-05"}, "rows": 2, "pages": 1, "files": [str(f)], "date_mismatch": 1}) + "\n")
+    build_processed.EXCLUDED.clear()
+    rows = [r for _, rs in build_processed.rows_of(root, "v2_equities_master") for r in rs]
+    assert [r["Code"] for r in rows] == ["10000"]
+    assert build_processed.EXCLUDED == {"v2_equities_master": 1}
+    assert json.loads(f.read_text())["data"][1]["Code"] == "20000"                                # 生データは残る

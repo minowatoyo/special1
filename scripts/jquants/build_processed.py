@@ -17,21 +17,30 @@ sys.path.insert(0, str(Path(__file__).parent))
 import schema
 
 
+EXCLUDED: dict = {}
+DATE_CHECKED_SLUGS = {"v2_equities_master", "v2_equities_bars_daily", "v2_indices_bars_daily"}
+
+
 def checkpoint_files(root: Path):
+    """完了した取得のページ → 要求日（日付指定でない取得は None）。チェックポイントがなければ None。"""
     p = root / "_meta" / "checkpoint.jsonl"
     if not p.exists():
         return None
-    out = set()
+    out = {}
     for line in p.read_text(encoding="utf-8").splitlines():
         try:
-            out.update(Path(x).resolve() for x in json.loads(line).get("files", []))
+            r = json.loads(line)
         except ValueError:
-            pass
+            continue
+        for x in r.get("files", []):
+            out[Path(x).resolve()] = r.get("params", {}).get("date")
     return out
 
 
 def rows_of(root: Path, slug: str):
-    """チェックポイントがあれば、完了した取得のページだけを使う（失敗・途中のページは使わない）。"""
+    """チェックポイントがあれば、完了した取得のページだけを使う（失敗・途中のページは使わない）。
+    日付指定の取得（銘柄日足・上場銘柄表・指数日足）は、返った日付が要求日と違う行を加工に入れない（date_mismatch。
+    生データには残る）。除外した行数は EXCLUDED に数え、_build_report.json に出す。"""
     only = checkpoint_files(root)
     for f in sorted((root / "raw" / slug).glob("**/*.json")):
         if only is not None and f.resolve() not in only:
@@ -40,8 +49,14 @@ def rows_of(root: Path, slug: str):
             js = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             continue
+        want = only.get(f.resolve()) if only is not None else None
         for k, v in (js or {}).items():
             if isinstance(v, list):
+                if want and slug in DATE_CHECKED_SLUGS:
+                    keep = [r for r in v if str(r.get("Date", ""))[:10] == want]
+                    if len(keep) != len(v):
+                        EXCLUDED[slug] = EXCLUDED.get(slug, 0) + len(v) - len(keep)
+                    v = keep
                 yield f, v
 
 
@@ -87,6 +102,7 @@ def main(root: Path) -> dict:
         save("fins_summary", schema.normalize_fins(fs, days))
     for name, cols in schema.EMPTY_SLOTS.items():
         save(name, pd.DataFrame(columns=cols))
+    rep["excluded_date_mismatch_rows"] = dict(EXCLUDED)
     (out / "_build_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
     return rep
 
