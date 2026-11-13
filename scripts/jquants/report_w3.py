@@ -41,6 +41,7 @@ def main(root: Path) -> dict:
                 if r["http"] != "200":
                     fails[(r["path"], r["http"])] += 1
     rep["endpoints"] = {k: dict(v) for k, v in by.items()}
+    rep["zero_row_days"] = sorted((r["path"], r["params"].get("date")) for r in ck.values() if r.get("zero_rows"))
     rep["non200_responses"] = {f"{p} HTTP {h}": n for (p, h), n in fails.items()}
     out = root / "processed"
     t = {}

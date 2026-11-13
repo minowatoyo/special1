@@ -119,12 +119,12 @@ def usable_from(disc_date, disc_time, trading_days) -> pd.Timestamp:
     return nxt[0] if len(nxt) else pd.NaT
 
 
-def reconcile_adjustment(prices: pd.DataFrame, tol: float = 1e-6) -> pd.DataFrame:
-    """調整係数の突合: 連続する営業日の組で、(AdjC/C)_t ÷ (AdjC/C)_{t+1} が AdjFactor_{t+1} に一致するか。
-    営業日は、取得済みの全日付の和集合（カレンダー）で数え、暦日の間隔が 7 日を超える組（取得していない日に分割があり得る）は検査しない。
-    銘柄ごとの不一致日を返す（空なら全部一致）。窓の端の影響を受けない局所的な検査。"""
+def adjustment_pairs(prices: pd.DataFrame) -> pd.DataFrame:
+    """連続する営業日の組ごとの突合結果。営業日は、取得済みの全日付の和集合（カレンダー）で数え、暦日の間隔が 7 日を超える組
+    （取得していない日に分割があり得る）は含めない。(AdjC/C)_t が (AdjC/C)_{t+1} × AdjFactor_{t+1} に一致するはず。
+    列: code, date, close, adj_close, f_next, err_abs（調整後終値での差。円）, err_rel。"""
     cal = {d: i for i, d in enumerate(sorted(prices["date"].unique()))}
-    out = []
+    parts = []
     for code, g in prices.sort_values("date").groupby("code"):
         g = g.dropna(subset=["close", "adj_close"])
         g = g[g["close"] > 0]
@@ -133,13 +133,27 @@ def reconcile_adjustment(prices: pd.DataFrame, tol: float = 1e-6) -> pd.DataFram
         idx = g["date"].map(cal).to_numpy()
         r = (g["adj_close"] / g["close"]).to_numpy()
         f = g["adj_factor"].to_numpy()
-        exp = r[1:] * f[1:]            # r_t = r_{t+1} × f_{t+1}
         gap_days = (g["date"].iloc[1:].to_numpy() - g["date"].iloc[:-1].to_numpy()).astype("timedelta64[D]").astype(int)
-        adjacent = ((idx[1:] - idx[:-1]) == 1) & (gap_days <= MAX_GAP_DAYS)
-        bad = adjacent & (np.abs(r[:-1] - exp) > tol * np.maximum(1.0, np.abs(r[:-1])))
-        for i in np.where(bad)[0]:
-            out.append({"code": code, "date": g["date"].iloc[i], "ratio": r[i], "expected": exp[i]})
-    return pd.DataFrame(out, columns=["code", "date", "ratio", "expected"])
+        ok = ((idx[1:] - idx[:-1]) == 1) & (gap_days <= MAX_GAP_DAYS)
+        exp = r[1:] * f[1:]
+        c = g["close"].to_numpy()[:-1]
+        err_abs = np.abs(g["adj_close"].to_numpy()[:-1] - c * exp)
+        parts.append(pd.DataFrame({"code": code, "date": g["date"].iloc[:-1].to_numpy(), "close": c,
+                                   "adj_close": g["adj_close"].to_numpy()[:-1], "f_next": f[1:], "err_abs": err_abs,
+                                   "err_rel": np.abs(r[:-1] - exp) / np.maximum(1.0, np.abs(r[:-1]))})[ok])
+    cols = ["code", "date", "close", "adj_close", "f_next", "err_abs", "err_rel"]
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+
+
+def reconcile_adjustment(prices: pd.DataFrame, tol: float = 1e-6, abs_unit: float = 0.0) -> pd.DataFrame:
+    """調整係数の突合の不一致（空なら全部一致）。許容差は相対 tol。abs_unit>0 なら、調整後終値の丸め（その単位の 1/2 を
+    2 つの価格ぶん）による誤差を、相対許容に加える（丸めの単位は診断スクリプトで確かめてから決める）。"""
+    pr = adjustment_pairs(prices)
+    if pr.empty:
+        return pd.DataFrame(columns=["code", "date", "ratio", "expected"])
+    allow = tol + (abs_unit * 1.0) / pr["adj_close"].clip(lower=1e-9)
+    bad = pr[pr["err_rel"] > allow]
+    return bad.assign(ratio=bad["adj_close"] / bad["close"], expected=bad["adj_close"] / bad["close"] * (1 + bad["err_rel"]))[["code", "date", "ratio", "expected"]]
 
 
 def quality_flags(prices: pd.DataFrame) -> pd.DataFrame:

@@ -417,3 +417,25 @@ def test_contract_check_uses_explicit_oldest_and_window_slides_daily():
     assert "2016-11-13" in backfill.check_contract(C(), date(2016, 11, 13))
     with pytest.raises(backfill.ContractChanged):
         backfill.check_contract(C(), date(2016, 11, 12))                      # 既定のままでは停止（自動では変えない）
+
+
+def test_adjustment_pairs_and_rounding_tolerance():
+    import diagnose_adjustment
+    df = schema.normalize_prices(bars(factor_on=5))
+    assert diagnose_adjustment.diagnose(df)["mismatch(rel>1e-6)"] == 0
+    df["adj_close"] = df["adj_close"].round(0) + 0.3                 # 丸め誤差を模擬
+    assert len(schema.reconcile_adjustment(df)) > 0
+    assert schema.reconcile_adjustment(df, abs_unit=1.0).empty        # 丸めの単位を渡せば許容される
+    rep = diagnose_adjustment.diagnose(df)
+    assert rep["share_abs_err_le"]["1.0"] > 0.99 and "by_close_level" in rep
+
+
+def test_diagnose_flags_breakdown():
+    import diagnose_adjustment
+    pr = schema.normalize_prices(bars(n=6))
+    fl = schema.quality_flags(pr)
+    fl.loc[2, "no_trade"] = True
+    fl.loc[4, "jump_flag"] = True
+    iv = schema.master_intervals(pd.concat([master(d, ["12340"]) for d in pr["date"]]), pr["date"])
+    r = diagnose_adjustment.diagnose_flags(pr, fl, iv)
+    assert r["no_trade_by_market"]["0111"] == {"rows": 6, "no_trade": 1} and r["jump_flag"]["total"] == 1

@@ -43,8 +43,8 @@ def rows_of(root: Path, slug: str):
     生データには残る）。除外した行数は EXCLUDED に数え、_build_report.json に出す。"""
     only = checkpoint_files(root)
     for f in sorted((root / "raw" / slug).glob("**/*.json")):
-        if only is not None and f.resolve() not in only:
-            continue
+        if only is not None and f.resolve() not in only and slug != "v2_indices_bars_daily_topix":
+            continue                                   # TOPIX（営業日を決める取得）はチェックポイントの外。200 の本文だけが行を持ち、重複は後段で除く
         try:
             js = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
