@@ -20,8 +20,9 @@ import schema  # noqa: E402
 def diagnose(pr: pd.DataFrame) -> dict:
     pairs = schema.adjustment_pairs(pr)
     bad = pairs[pairs["err_rel"] > 1e-6]
+    beyond = pairs[(pairs["err_rel"] > 1e-6) & (pairs["err_abs"] > schema.ADJ_ROUND_YEN + schema.ADJ_SLACK)]
     q = lambda s: {k: float(f"{v:.3g}") for k, v in s.quantile([0.5, 0.9, 0.99, 1.0]).items()}  # noqa: E731
-    rep = {"pairs_checked": len(pairs), "mismatch(rel>1e-6)": len(bad)}
+    rep = {"pairs_checked": len(pairs), "mismatch(rel>1e-6)": len(bad), "mismatch_beyond_rounding(>0.1yen)": len(beyond)}
     if bad.empty:
         return rep
     rep["abs_err_yen_quantiles"] = q(bad["err_abs"])
@@ -43,7 +44,7 @@ def diagnose(pr: pd.DataFrame) -> dict:
 
 def diagnose_flags(pr: pd.DataFrame, fl: pd.DataFrame, iv: pd.DataFrame) -> dict:
     """売買なし（no_trade）と ±31% 超の跳び（jump_flag）の内訳。市場区分・年・分割との関係（件数のみ）。"""
-    m = pr[["code", "date", "adj_factor"]].merge(fl, on=["code", "date"]).sort_values("date")
+    m = pr[["code", "date", "adj_factor", "limit_up", "limit_down", "close"]].merge(fl, on=["code", "date"]).sort_values("date")
     j = pd.merge_asof(m, iv.sort_values("valid_from")[["code", "valid_from", "valid_to", "market"]],
                       left_on="date", right_on="valid_from", by="code", direction="backward")
     j["market"] = j["market"].where(j["valid_to"] >= j["date"], "不明")
@@ -53,6 +54,8 @@ def diagnose_flags(pr: pd.DataFrame, fl: pd.DataFrame, iv: pd.DataFrame) -> dict
     jf = j[j["jump_flag"]]
     out["jump_flag"] = {"total": len(jf), "by_year": {int(k): int(v) for k, v in jf.groupby(jf["date"].dt.year).size().items()},
                         "adj_factor_not_1_that_day": int((jf["adj_factor"] != 1).sum()),
+                        "limit_flag_that_day": int(((jf["limit_up"].astype(str) == "1") | (jf["limit_down"].astype(str) == "1")).sum()),
+                        "by_close_level": {f"{lo}-{hi}": int(((jf["close"] >= lo) & (jf["close"] < hi)).sum()) for lo, hi in ((0, 100), (100, 500), (500, 1000), (1000, 100000))},
                         "by_market": {str(k): int(v) for k, v in jf.groupby(jf["market"].fillna("不明")).size().items()}}
     return out
 

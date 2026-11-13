@@ -145,14 +145,17 @@ def adjustment_pairs(prices: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
 
 
-def reconcile_adjustment(prices: pd.DataFrame, tol: float = 1e-6, abs_unit: float = 0.0) -> pd.DataFrame:
-    """調整係数の突合の不一致（空なら全部一致）。許容差は相対 tol。abs_unit>0 なら、調整後終値の丸め（その単位の 1/2 を
-    2 つの価格ぶん）による誤差を、相対許容に加える（丸めの単位は診断スクリプトで確かめてから決める）。"""
+ADJ_ROUND_YEN = 0.1           # 調整後価格は 0.1 円単位に丸められている（W3 の実測: 不一致 455,521 件すべてが差 0.1 円以内）
+ADJ_SLACK = 1e-4
+
+
+def reconcile_adjustment(prices: pd.DataFrame, tol: float = 1e-6, abs_tol_yen: float = ADJ_ROUND_YEN) -> pd.DataFrame:
+    """調整係数の突合の不一致（空なら全部一致）。相対誤差が tol を超え、かつ調整後終値の差が abs_tol_yen（丸めの単位）を
+    超える組だけを不一致とする。丸めの範囲を超える差（分割の取りこぼしなど）は検出する。検出の分解能は abs_tol_yen 円。"""
     pr = adjustment_pairs(prices)
     if pr.empty:
         return pd.DataFrame(columns=["code", "date", "ratio", "expected"])
-    allow = tol + (abs_unit * 1.0) / pr["adj_close"].clip(lower=1e-9)
-    bad = pr[pr["err_rel"] > allow]
+    bad = pr[(pr["err_rel"] > tol) & (pr["err_abs"] > abs_tol_yen + ADJ_SLACK)]
     return bad.assign(ratio=bad["adj_close"] / bad["close"], expected=bad["adj_close"] / bad["close"] * (1 + bad["err_rel"]))[["code", "date", "ratio", "expected"]]
 
 
@@ -205,6 +208,7 @@ def universe(prices: pd.DataFrame, intervals: pd.DataFrame, markets=POST_2022, m
     売買代金 Va の 60 営業日平均 ≥ 5 億円／履歴 ≥ max(min_history, 60) 営業日。
     markets は既定で 2022-04-04 以降の区分。それ以前の母集団は PRE_2022_PROPOSAL（案。未確定）を明示して渡す。"""
     p = prices.sort_values(["code", "date"]).copy()
+    p["turnover"] = p["turnover"].fillna(0.0)                  # 売買のなかった日は売買代金 0（欠損のまま平均に入れない）
     p["va60"] = p.groupby("code")["turnover"].transform(lambda s: s.rolling(VA_WINDOW, min_periods=VA_WINDOW).mean())
     p["hist"] = p.groupby("code").cumcount() + 1
     iv = intervals.copy()

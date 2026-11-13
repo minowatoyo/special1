@@ -423,9 +423,11 @@ def test_adjustment_pairs_and_rounding_tolerance():
     import diagnose_adjustment
     df = schema.normalize_prices(bars(factor_on=5))
     assert diagnose_adjustment.diagnose(df)["mismatch(rel>1e-6)"] == 0
-    df["adj_close"] = df["adj_close"].round(0) + 0.3                 # 丸め誤差を模擬
+    df["adj_close"] = df["adj_close"].round(0) + 0.3                 # 丸め（0.1 円）を超える差
     assert len(schema.reconcile_adjustment(df)) > 0
-    assert schema.reconcile_adjustment(df, abs_unit=1.0).empty        # 丸めの単位を渡せば許容される
+    assert schema.reconcile_adjustment(df, abs_tol_yen=1.0).empty     # 丸めの単位を渡せば許容される
+    d2 = schema.normalize_prices(bars(factor_on=5)); d2["adj_close"] = (d2["adj_close"] * 10).round() / 10 + 0.04
+    assert schema.reconcile_adjustment(d2).empty                      # 0.1 円の丸め内は一致とみなす（既定）
     rep = diagnose_adjustment.diagnose(df)
     assert rep["share_abs_err_le"]["1.0"] > 0.99 and "by_close_level" in rep
 
@@ -439,3 +441,15 @@ def test_diagnose_flags_breakdown():
     iv = schema.master_intervals(pd.concat([master(d, ["12340"]) for d in pr["date"]]), pr["date"])
     r = diagnose_adjustment.diagnose_flags(pr, fl, iv)
     assert r["no_trade_by_market"]["0111"] == {"rows": 6, "no_trade": 1} and r["jump_flag"]["total"] == 1
+    assert "limit_flag_that_day" in r["jump_flag"]
+
+
+def test_universe_counts_no_trade_days_as_zero_turnover_not_missing():
+    n = 80
+    d = pd.bdate_range("2024-01-04", periods=n)
+    t = np.full(n, 9e8)
+    t[10] = np.nan                                                   # 売買なしの日
+    p = pd.DataFrame({"date": d, "code": "10000", "turnover": t})
+    iv = schema.master_intervals(pd.concat([master(x, ["10000"]) for x in d]), d)
+    u = schema.universe(p, iv)
+    assert len(u) > 0 and u["date"].min() == d[59]                   # 欠損のまま平均すると 70 日目まで対象外になる
