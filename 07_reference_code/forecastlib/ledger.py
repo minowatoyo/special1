@@ -150,6 +150,10 @@ class AppendOnlyLedger:
             os.fsync(fh.fileno())
         return row
 
+    def append_event(self, typ: str, payload: dict) -> dict:
+        """任意の種類の行（例: trial）を追記する。連鎖と追記専用は同じ。"""
+        return self._append(typ, payload)
+
     def append_forecast(self, fc: dict, meta: dict) -> list:
         """forecast.final_forecast の出力を足す。meta: source（"jquants" 必須）、data_manifest_sha256、code_version、config_sha256。
         同じ (asset, asof, h, data_manifest_sha256) は足さない。戻り値は足した行。"""
