@@ -231,3 +231,60 @@ def test_ridge_scale_by_assets_flag_changes_penalty_only_when_set():
     a0, a1 = prepare_asset(df, "x", cfg0), prepare_asset(df, "x", cfg1)
     r0, r1 = walk_forward(a0, cfg0), walk_forward(a1, cfg1)
     assert np.allclose(np.nan_to_num(r0[21]["scale"]), np.nan_to_num(r1[21]["scale"]))
+
+
+def test_outer_evaluation_selects_only_from_past_and_reports_optimism():
+    """FIX-05: 外側の評価は、各ブロックの前に確定した損失だけで採用モデルを選ぶ。"""
+    from forecastlib import outer
+    df = synth.make_garch_ohlcv(n=3000, seed=11)
+    cfg = Config(step=5, boot_b=60, horizons=(5, 21))
+    wf = walk_forward(prepare_asset(df, "x", cfg), cfg)
+    r = outer.outer_evaluate(wf, cfg, n_blocks=5)
+    o = r[21]
+    assert o["n_outer"] > 100 and np.isfinite(o["crps_outer"]) and len(o["blocks"]) == 5
+    for b in o["blocks"]:
+        assert b["train_n"] > 0 and b["selected"] in wf[21]["models"]
+    assert all(o["blocks"][i]["train_n"] <= o["blocks"][i + 1]["train_n"] for i in range(4))   # 学習は時間とともに延びる（先読みなし）
+    # 外側の損失は、選ばれたモデルの損失の連結に一致する
+    assert "optimism(insample_skill - outer_skill)" in o
+
+
+def _fake_fc(asof="2024-01-04", h=21):
+    qs = [{"p": p, "price": 100 * math.exp(0.1 * (p - 0.5))} for p in (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)]
+    return {"asset": "7203", "asof": asof, "last_close": 100.0, "horizons": {h: {"model": "V3", "quantiles": qs, "p_up": 0.52, "sigma_h": 0.06}}}
+
+
+META = {"source": "jquants", "data_manifest_sha256": "a" * 64, "code_version": "abc123", "config_sha256": "b" * 64}
+
+
+def test_append_only_ledger_chain_detects_tampering_and_rejects_provisional(tmp_path):
+    from forecastlib.ledger import AppendOnlyLedger, LedgerError
+    L = AppendOnlyLedger(tmp_path / "ledger" / "f.jsonl")
+    assert len(L.append_forecast(_fake_fc(), META)) == 1
+    assert L.append_forecast(_fake_fc(), META) == []                            # 同じ予測は重複させない
+    assert len(L.append_forecast(_fake_fc("2024-01-05"), META)) == 1
+    assert L.verify() == {"ok": True, "rows": 2, "first_bad": None}
+    with pytest.raises(LedgerError):
+        L.append_forecast(_fake_fc("2024-01-08"), {**META, "source": "mixed"})   # 暫定データは記録しない
+    with pytest.raises(LedgerError):
+        L.append_forecast(_fake_fc("2024-01-08"), {**META, "config_sha256": ""})
+    lines = L.path.read_text(encoding="utf-8").splitlines()
+    L.path.write_text("\n".join([lines[0].replace('"p_up":0.52', '"p_up":0.99'), lines[1]]) + "\n", encoding="utf-8")   # 書き換え
+    assert L.verify()["ok"] is False and L.verify()["first_bad"] == 0
+    with pytest.raises(LedgerError):
+        L.append_forecast(_fake_fc("2024-01-09"), META)                          # 壊れた台帳には追記しない
+
+
+def test_ledger_scoring_appends_outcomes_without_touching_forecasts(tmp_path):
+    from forecastlib.ledger import AppendOnlyLedger
+    idx = pd.bdate_range("2024-01-01", periods=60)
+    df = pd.DataFrame({"close": 100.0 * np.exp(np.linspace(0, 0.1, 60))}, index=idx)
+    L = AppendOnlyLedger(tmp_path / "f.jsonl")
+    L.append_forecast(_fake_fc(str(idx[3].date()), 21), META)
+    L.append_forecast(_fake_fc(str(idx[55].date()), 21), META)                   # 期日が来ていない
+    before = L.path.read_text(encoding="utf-8").splitlines()
+    out = L.score(df, "7203")
+    assert len(out) == 1 and out[0]["payload"]["target_date"] == str(idx[24].date())
+    assert L.score(df, "7203") == []                                              # 二重に採点しない
+    after = L.path.read_text(encoding="utf-8").splitlines()
+    assert after[:2] == before and len(after) == 3 and L.verify()["ok"]
