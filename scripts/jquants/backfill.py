@@ -3,7 +3,7 @@
 取得は母集団で絞らない。日付指定の全銘柄データを保存し、普通株・市場区分・流動性のフィルタは後段（schema.universe）で適用する。
   1) TOPIX 日足で営業日を決める  2) 銘柄日足: 営業日ごと・全銘柄（1 リクエスト／日）  3) 上場銘柄表: 営業日ごとの日次スナップショット
   4) 財務サマリー: 営業日ごと  5) 指数日足: 営業日ごと  6) 決算発表予定（版として 1 回）
-実行前に契約上の取得可能期間を再確認する。実測値 2016-11-12 と違えば、開始日を変えずに停止して報告する。
+実行前に契約上の取得可能期間を再確認する。利用者が --oldest で明示した最古日（既定 2016-11-12）と違えば、開始日を変えずに停止して報告する。契約期間は実行日の 10 年前から始まる窓で、日々ずれる。
 チェックポイント（_meta/checkpoint.jsonl）は、1 件の取得が全ページそろって成功した後にだけ追記する。失敗は未完了のまま残り、
 正常な 0 行とは区別される（銘柄日足・上場銘柄表・指数が営業日に 0 行なら失敗扱い）。再実行は未完了分だけを取る。429 が出たら停止する。
 終了日は実行日の前営業日（当日分は未確定）。3 周しても解消しない日は全体を止めず「要調査」（_meta/investigate.jsonl）に記録して残りを進める。
@@ -115,12 +115,12 @@ def check_contract(client: Client, oldest: date = OLDEST) -> str:
     raise ContractChanged(f"契約期間が実測({oldest})と一致しない: 前日 {prev} の応答 HTTP {st}, 案内の開始日 {m.group(1) if m else '不明'}。開始日は変更せず停止")
 
 
-def trading_days(client: Client, start: date, end: date) -> list[date]:
+def trading_days(client: Client, start: date, end: date, oldest: date = OLDEST) -> list[date]:
     st, rows = client.get_all(CAL_PATH, {"from": start.isoformat(), "to": end.isoformat()}, "backfill:calendar")
     if st != 200 or not rows:
         raise RuntimeError(f"営業日（TOPIX）の取得に失敗: HTTP {st}, {len(rows)} 行")
     days = sorted({date.fromisoformat(r["Date"]) for r in rows})
-    if days[0] < OLDEST:
+    if days[0] < oldest:
         raise ContractChanged("契約期間より前の日が含まれる")
     return days
 
@@ -190,15 +190,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--root", default="data/jquants")
-    ap.add_argument("--start", default=OLDEST.isoformat())
+    ap.add_argument("--oldest", default=OLDEST.isoformat(),
+                    help="契約上の最古日（利用者が明示する。契約期間は実行日の 10 年前から始まる窓で、日々ずれる）。開始日の既定にもなる")
+    ap.add_argument("--start", default=None)
     ap.add_argument("--end", default=None, help="既定は実行日の前営業日。それより後は指定できない")
     a = ap.parse_args()
     root = Path(a.root)
-    start = date.fromisoformat(a.start)
+    oldest = date.fromisoformat(a.oldest)
+    start = date.fromisoformat(a.start) if a.start else oldest
     last_ok = prev_business_day(date.today())
     end = min(date.fromisoformat(a.end), last_ok) if a.end else last_ok
-    if start < OLDEST:
-        sys.exit(f"開始日は {OLDEST} 以降（Standard の契約期間）")
+    if start < oldest:
+        sys.exit(f"開始日は {oldest} 以降（契約期間）")
     n_days = int((end - start).days * 245 / 365)
     e = estimate(n_days)
     print(f"[計画] 期間 {start}〜{end}（営業日は概算 {n_days}、実行時に TOPIX で確定）")
@@ -215,8 +218,8 @@ def main() -> None:
         sys.exit(f"空き容量が足りない: {free:.1f} GB（必要の目安 {e['raw_gb'] * 1.5:.1f} GB）")
     c = Client(root=root, per_min=PRICE_PER_MIN)
     try:
-        print(check_contract(c))
-        days = trading_days(c, start, end)
+        print(check_contract(c, oldest))
+        days = trading_days(c, start, end, oldest)
         jobs = plan(days)
         print(f"営業日 {len(days)}／全 {len(jobs)} 件")
         st = run_jobs(c, jobs, root)

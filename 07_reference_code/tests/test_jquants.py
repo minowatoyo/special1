@@ -407,3 +407,13 @@ def test_build_excludes_date_mismatch_rows_but_keeps_raw(tmp_path):
     assert [r["Code"] for r in rows] == ["10000"]
     assert build_processed.EXCLUDED == {"v2_equities_master": 1}
     assert json.loads(f.read_text())["data"][1]["Code"] == "20000"                                # 生データは残る
+
+
+def test_contract_check_uses_explicit_oldest_and_window_slides_daily():
+    from datetime import date
+    class C:
+        def get_page(self, path, params, note=""):
+            return 400, {"message": "covers the following dates: 2016-11-13 ~ ."}, {}
+    assert "2016-11-13" in backfill.check_contract(C(), date(2016, 11, 13))
+    with pytest.raises(backfill.ContractChanged):
+        backfill.check_contract(C(), date(2016, 11, 12))                      # 既定のままでは停止（自動では変えない）
