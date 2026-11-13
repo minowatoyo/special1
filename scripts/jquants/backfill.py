@@ -3,7 +3,7 @@
 取得は母集団で絞らない。日付指定の全銘柄データを保存し、普通株・市場区分・流動性のフィルタは後段（schema.universe）で適用する。
   1) TOPIX 日足で営業日を決める  2) 銘柄日足: 営業日ごと・全銘柄（1 リクエスト／日）  3) 上場銘柄表: 営業日ごとの日次スナップショット
   4) 財務サマリー: 営業日ごと  5) 指数日足: 営業日ごと  6) 決算発表予定（版として 1 回）
-実行前に契約上の取得可能期間を再確認する。利用者が --oldest で明示した最古日（既定 2016-11-12）と違えば、開始日を変えずに停止して報告する。契約期間は実行日の 10 年前から始まる窓で、日々ずれる。
+実行前に契約上の取得可能期間を再確認する。契約の最古日は実行日の 10 年前の同月同日から自動算出し（--oldest で明示も可）、契約の案内と違えば開始日を変えずに停止して報告する。契約期間は日々ずれる窓。
 チェックポイント（_meta/checkpoint.jsonl）は、1 件の取得が全ページそろって成功した後にだけ追記する。失敗は未完了のまま残り、
 正常な 0 行とは区別される（銘柄日足・上場銘柄表・指数が営業日に 0 行なら失敗扱い）。再実行は未完了分だけを取る。429 が出たら停止する。
 終了日は実行日の前営業日（当日分は未確定）。3 周しても解消しない日は全体を止めず「要調査」（_meta/investigate.jsonl）に記録して残りを進める。
@@ -65,6 +65,15 @@ def append_checkpoint(root: Path, rec: dict) -> None:
         fh.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
         fh.flush()
         os.fsync(fh.fileno())
+
+
+def auto_oldest(today: date) -> date:
+    """契約の最古日の見込み = 実行日の 10 年前の同月同日（W3 の実測: 11/12 実行で 2016-11-12、11/13 実行で 2016-11-13）。
+    2/29 は 10 年前に同日がないので 2/28。見込みは実行時に契約の案内と照合し、一致しなければ停止する（check_contract）。"""
+    try:
+        return today.replace(year=today.year - 10)
+    except ValueError:
+        return date(today.year - 10, 2, 28)
 
 
 def prev_business_day(today: date) -> date:
@@ -193,13 +202,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--root", default="data/jquants")
-    ap.add_argument("--oldest", default=OLDEST.isoformat(),
-                    help="契約上の最古日（利用者が明示する。契約期間は実行日の 10 年前から始まる窓で、日々ずれる）。開始日の既定にもなる")
+    ap.add_argument("--oldest", default=None,
+                    help="契約上の最古日。既定は実行日の 10 年前の同月同日（自動算出し、契約の案内と照合して一致しなければ停止）。明示も可。開始日の既定にもなる")
     ap.add_argument("--start", default=None)
     ap.add_argument("--end", default=None, help="既定は実行日の前営業日。それより後は指定できない")
     a = ap.parse_args()
     root = Path(a.root)
-    oldest = date.fromisoformat(a.oldest)
+    oldest = date.fromisoformat(a.oldest) if a.oldest else auto_oldest(date.today())
     start = date.fromisoformat(a.start) if a.start else oldest
     last_ok = prev_business_day(date.today())
     end = min(date.fromisoformat(a.end), last_ok) if a.end else last_ok
@@ -207,7 +216,7 @@ def main() -> None:
         sys.exit(f"開始日は {oldest} 以降（契約期間）")
     n_days = int((end - start).days * 245 / 365)
     e = estimate(n_days)
-    print(f"[計画] 期間 {start}〜{end}（営業日は概算 {n_days}、実行時に TOPIX で確定）")
+    print(f"[計画] 契約最古日 {oldest}（{'指定' if a.oldest else '実行日の 10 年前から自動算出'}）／期間 {start}〜{end}（営業日は概算 {n_days}、実行時に TOPIX で確定）")
     for p, n in e["endpoints"].items():
         print(f"  {p}  {n} 回（全銘柄・日付指定）")
     print("  /v2/equities/earnings-calendar  1 回（上場銘柄表は営業日ごとの日次スナップショット）。ほか営業日の取得・契約確認 2 回")

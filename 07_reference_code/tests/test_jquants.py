@@ -453,3 +453,10 @@ def test_universe_counts_no_trade_days_as_zero_turnover_not_missing():
     iv = schema.master_intervals(pd.concat([master(x, ["10000"]) for x in d]), d)
     u = schema.universe(p, iv)
     assert len(u) > 0 and u["date"].min() == d[59]                   # 欠損のまま平均すると 70 日目まで対象外になる
+
+
+def test_auto_oldest_is_ten_years_before_same_month_day():
+    from datetime import date
+    assert backfill.auto_oldest(date(2026, 11, 12)) == date(2016, 11, 12)
+    assert backfill.auto_oldest(date(2026, 11, 13)) == date(2016, 11, 13)       # W3 の実測と一致
+    assert backfill.auto_oldest(date(2036, 2, 29)) == date(2026, 2, 28)         # 10 年前に同日がない場合
