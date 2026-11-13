@@ -142,15 +142,18 @@ def estimate(n_days: int) -> dict:
     return {"endpoints": per_ep, "requests": reqs, "minutes": minutes, "raw_gb": gb}
 
 
-def run_jobs(client: Client, jobs: list, root: Path, sleep=time.sleep) -> dict:
+def run_jobs(client: Client, jobs: list, root: Path, sleep=time.sleep, progress=None) -> dict:
     """未完了の件だけを取る。成功（全ページ・必要なら 1 行以上）の後にだけチェックポイントを追記する。"""
     ckpt = load_checkpoint(root)
     stats = {"done_before": 0, "ok": 0, "fail": {}, "rows": {}, "pages": {}, "zero_rows_accepted": 0, "stopped": ""}
     todo = [j for j in jobs if jkey(j[0], j[1]) not in ckpt]
     stats["done_before"] = len(jobs) - len(todo)
+    t0, total_todo = time.monotonic(), len(todo)
     for attempt in range(MAX_PASSES):
         failed = []
         for path, params, per_min in todo:
+            if progress and stats["ok"] % 25 == 0:
+                progress(stats["ok"], total_todo, time.monotonic() - t0, path, params.get("date"), len(failed))
             client.limiter.gap = 60.0 / per_min
             st, rows = client.get_all(path, params, f"backfill:pass{attempt + 1}")
             if st == 429:
@@ -222,7 +225,11 @@ def main() -> None:
         days = trading_days(c, start, end, oldest)
         jobs = plan(days)
         print(f"営業日 {len(days)}／全 {len(jobs)} 件")
-        st = run_jobs(c, jobs, root)
+        def progress(n, total, sec, path, d, nfail):
+            eta = sec / n * (total - n) / 60 if n else float("nan")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {n}/{total} 完了（失敗待ち {nfail}）経過 {sec / 60:.0f} 分／残り約 {eta:.0f} 分／今: {path} {d}", flush=True)
+
+        st = run_jobs(c, jobs, root, progress=progress)
     except ContractChanged as ex:
         sys.exit(f"停止: {ex}")
     except AuthError as ex:
