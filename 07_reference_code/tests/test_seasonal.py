@@ -121,3 +121,45 @@ def test_seasonal_study_end_to_end_with_wide_universe(tmp_path):
     assert "confirmation" in r["S1_same_month:ic"] and r["S1_same_month:ic"]["law_candidate"] is True
     assert res["ledger_chain"]["ok"] and (root / "results" / "seasonal" / "summary.json").exists()
     assert schema.WIDE_VA_MIN == 2e7 and "0113" in schema.WIDE_MARKETS and "0105" not in schema.WIDE_MARKETS
+
+
+def test_s2_windows_and_deep_dive_recover_planted_dividend_runup(tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import s2_deep_dive
+    from test_rules import _write_processed
+    P, codes, _ = seasonal_panel(n_codes=140, seed=11, turnover=1e9)
+    fins = _fins(P, codes)
+    rng = np.random.default_rng(1)
+    divs = dict(zip(codes, rng.uniform(5, 60, len(codes))))
+    fins["FDivAnn"] = fins["Code"].map(divs)
+    # 高利回りの銘柄ほど、権利付き最終日の 40 営業日前から最終日にかけて上がる（3 月・9 月）
+    mo = seasonal.months(P)
+    for m in range(len(mo["last"])):
+        if mo["cal"][m] not in (3, 9):
+            continue
+        L = mo["last"][m] - (2 if P.dates[mo["last"][m]] >= seasonal.T2_START else 3)
+        e = L - 40
+        if e < 5:
+            continue
+        for j, c in enumerate(codes):
+            bump = 0.05 * (divs[c] - 5) / 55
+            ramp = np.linspace(1.0, 1.0 + bump, L - e + 1)
+            P.adj_open[e:L + 1, j] *= ramp
+            P.adj_open[L + 1:, j] *= 1.0 + bump
+    ws = seasonal.s2_windows(P, np.ones(P.adj_close.shape, bool), P.va60(), fins, int(np.searchsorted(P.dates.values, rules.SPLIT.to_datetime64())))
+    assert ws and {w["month"] for w in ws} == {3, 9} and all(len(w["yld"]) == len(w["y"]) == len(w["tier"]) for w in ws)
+    top = np.nanmean([seasonal.top_frac(w, 0.8) for w in ws])
+    bot = np.nanmean([seasonal.top_frac(w, 0.0, 0.2) for w in ws])
+    assert top > 0.008 and bot < -0.008 and top > bot + 0.015                       # 利回りが高いほど、上がる（単調）
+    # 権利落ちの後（最終日の始値 → 10 営業日後）は、植えていないので 0 付近
+    post = np.nanmean([seasonal.top_frac(w, 0.8) for w in seasonal.s2_windows(P, np.ones(P.adj_close.shape, bool), P.va60(), fins, 10 ** 6, post=10)])
+    assert abs(post) < 0.01
+    # スクリプトの一連の出力
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    import pandas as pd
+    prices = pd.read_parquet(root / "processed" / "prices_daily.parquet")
+    fins.to_parquet(root / "processed" / "fins_summary.parquet", index=False)
+    res = s2_deep_dive.main(root)
+    assert set(res) >= {"main", "D1_by_rights_month", "D2_yield_quintiles", "D3_by_liquidity_tier", "D4_sensitivity_grid(記述。選ぶためではない)", "D5_top15_tier_A"}
+    assert len(res["D4_sensitivity_grid(記述。選ぶためではない)"]) == 7 and len(prices) > 0

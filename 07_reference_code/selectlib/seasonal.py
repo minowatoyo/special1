@@ -202,3 +202,46 @@ def s3_stats(acc: dict, dates, b: int, which: str, h: int = RUN_DAYS_S3, min_ent
         tr[nm] = float(acc["tier_sum"][k][a].sum() / acc["tier_cnt"][k][a].sum()) if a.any() else float("nan")
     s["by_tier_event_weighted"] = tr
     return s
+
+
+def s2_windows(P, elig: np.ndarray, va60: np.ndarray, fins: pd.DataFrame, b: int, lead: int = RUN_DAYS_S2, exit_shift: int = 0, post: int = 0) -> list:
+    """S2 の月ごとの窓（銘柄ごとの値の配列を持つ。診断用）。買い e ＝ L − lead、売り x ＝ L − exit_shift。post>0 なら、買い ＝ L、売り ＝ L + post（権利落ちの後）。"""
+    mo = months(P)
+    last, cal = mo["last"], mo["cal"]
+    events = []
+    for m in range(len(last)):
+        lag = 2 if P.dates[last[m]] >= T2_START else 3
+        L = last[m] - lag
+        e, x = (L, L + post) if post else (L - lead, L - exit_shift)
+        if e - 1 < 0 or x >= len(P.dates):
+            continue
+        events.append((m, e - 1, e, x))
+    fa = fins_asof(P, fins, [s for _, s, _, _ in events])
+    out = []
+    for i, (m, s, e, x) in enumerate(events):
+        month = cal[m]
+        fy = fa["fy_month"][i]
+        rights = (fy == month) | (((fy + 5) % 12) + 1 == month)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            yld = fa["div"][i] * fa["r_disc"][i] / P.adj_close[s]
+        y = window_excess(P, elig[s], e, x)
+        g = rights & np.isfinite(yld) & (yld > 0) & np.isfinite(y)
+        if g.sum() < MIN_GROUP:
+            continue
+        out.append({"period": _period(e, x, b), "month": int(month), "year": int(P.dates[e].year), "yld": yld[g], "y": y[g], "tier": tiers(va60[s])[g]})
+    return out
+
+
+def top_frac(w: dict, lo: float, hi: float = 1.0) -> float:
+    """窓の中で、利回りの順位が [lo, hi) の割合に入る銘柄の平均超過。"""
+    r = w["yld"].argsort().argsort() / len(w["yld"])
+    m = (r >= lo) & (r < hi) if hi < 1.0 else (r >= lo)
+    return float(w["y"][m].mean()) if m.sum() >= 3 else np.nan
+
+
+def top_n(w: dict, n: int = 15, tier: int = 0, min_group: int = 20) -> float:
+    sel = np.flatnonzero(w["tier"] == tier)
+    if len(sel) < min_group:
+        return np.nan
+    o = sel[np.argsort(-w["yld"][sel])[:n]]
+    return float(w["y"][o].mean())
