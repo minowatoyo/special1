@@ -1,6 +1,6 @@
 """J-Quants API V2 の最小クライアント（取得・生データ保存・取得ログ・レート制限）。
 
-  * 鍵: 環境変数 JQUANTS_API_KEY（ローカル PC では実際のキー）。クラウドのセッションでは、プロキシが保存済みのキーに
+  * 鍵: 環境変数 JQUANTS_API_KEY、なければ ホームフォルダの .jquants_key（キーだけを書いたファイル。リポジトリの外）。クラウドのセッションでは、プロキシが保存済みのキーに
     置き換えるので、未設定なら仮の値 "proxy-injected" を送る。
   * 生の応答は data/jquants/raw/<エンドポイント>/<取得日>/<パラメータのハッシュ>.json に、そのまま保存する（ページごと）。
   * 取得ログ data/jquants/_meta/fetch_log.csv に、URL・UTC 時刻・HTTP 状態・バイト数・sha256 を追記する（鍵は記録しない）。
@@ -23,6 +23,17 @@ from pathlib import Path
 BASE = "https://api.jquants.com"
 ROOT = Path(os.environ.get("JQUANTS_DATA_DIR", "data/jquants"))
 UA = "research-fetch/1.0"
+
+
+KEY_FILE = Path.home() / ".jquants_key"
+
+
+def key_from_file() -> str:
+    """環境変数が空のときの代わり。ホームフォルダの .jquants_key（リポジトリの外）に、キーだけを書いたファイル。前後の空白・改行は無視。"""
+    try:
+        return KEY_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 class AuthError(RuntimeError):
@@ -48,7 +59,7 @@ class Client:
         self.last_raw = ""
         self.last_files: list = []
         self.last_pages = 0
-        self.key = key or os.environ.get("JQUANTS_API_KEY") or "proxy-injected"
+        self.key = key or os.environ.get("JQUANTS_API_KEY", "").strip() or key_from_file() or "proxy-injected"
         (self.root / "_meta").mkdir(parents=True, exist_ok=True)
 
     def _log(self, row: list) -> None:

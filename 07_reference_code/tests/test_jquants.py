@@ -505,3 +505,17 @@ def test_backfill_extra_margin_uses_date_param():
     from datetime import date
     jobs = backfill_extra.plan_extra([date(2026, 11, 2), date(2026, 11, 4)], ["3700"])
     assert jobs[0] == ("/v2/markets/margin-interest", {"date": "2026-11-02"}, 100)
+
+
+def test_key_lookup_order_env_then_file_then_placeholder(tmp_path, monkeypatch):
+    import client
+    f = tmp_path / ".jquants_key"
+    monkeypatch.setattr(client, "KEY_FILE", f)
+    monkeypatch.delenv("JQUANTS_API_KEY", raising=False)
+    assert client.Client(root=tmp_path).key == "proxy-injected"
+    f.write_text("  file-key \r\n", encoding="utf-8")
+    assert client.Client(root=tmp_path).key == "file-key"                          # 前後の空白・改行は無視
+    monkeypatch.setenv("JQUANTS_API_KEY", "env-key ")
+    assert client.Client(root=tmp_path).key == "env-key"                           # 環境変数が優先（空白は除く）
+    monkeypatch.setenv("JQUANTS_API_KEY", "")
+    assert client.Client(root=tmp_path).key == "file-key"                          # 空の環境変数は無視してファイルへ
