@@ -199,6 +199,9 @@ def test_run_selection_end_to_end_on_synthetic_processed_data(tmp_path):
     t0, t15 = res["trials"]["SEL-A|equal|gate=0|cost=0"], res["trials"]["SEL-A|equal|gate=0|cost=15"]
     assert t0["summary"]["port_ann"] > t15["summary"]["port_ann"]                       # コストを引くと成績は下がる
     assert "dsr" in t15 and res["caution"]
+    ic = res["ic"]["SEL-A"]
+    assert ic["all"]["n"] > 3 and "old_markets(<2022-04-04)" in ic["by_era"] and np.isfinite(ic["quintile_spread_per_period"])
+    assert res["trials_in_ledger_unique"] == 16
 
 
 def test_forecast_tools_record_only_canonical_data_and_chain_verifies(tmp_path):
@@ -231,3 +234,20 @@ def test_lgbm_path_uses_native_api_without_sklearn():
     s = model.walk_scores({"a": f}, ["a"], y, mask, kind="lgbm", min_periods=6)
     ic = np.mean([np.corrcoef(s[k], y[k])[0, 1] for k in range(12, K)])
     assert np.isfinite(s[10:]).all() and ic > 0.15
+
+
+def test_rank_ic_and_summary_properties():
+    rng = np.random.default_rng(9)
+    m = np.ones(300, bool)
+    y = rng.normal(size=300)
+    assert evalsel.rank_ic(y, y, m) == pytest.approx(1.0) and evalsel.rank_ic(-y, y, m) == pytest.approx(-1.0)
+    assert abs(evalsel.rank_ic(rng.normal(size=300), y, m)) < 0.2
+    assert np.isnan(evalsel.rank_ic(y, y, np.zeros(300, bool)))
+    sp = evalsel.quantile_spread(y + rng.normal(0, 0.1, 300), y, m)
+    assert sp > 1.0
+    ics = np.array([0.05, 0.03, -0.01, 0.04, 0.06, 0.02, 0.05, 0.03])
+    years = np.array([2019, 2019, 2020, 2020, 2022, 2022, 2023, 2023])
+    pre = years < 2022
+    s = evalsel.ic_summary(ics, years, pre, np.full(8, 0.002), np.full(8, 0.01))
+    assert s["all"]["n"] == 8 and s["by_era"]["old_markets(<2022-04-04)"]["n"] == 4 and s["all"]["t"] > 2
+    assert s["by_year"][2020]["n"] == 2 and abs(s["top15_minus_universe_before_cost_ann"] - 0.002 * evalsel.PERIODS_PER_YEAR) < 1e-12

@@ -123,3 +123,42 @@ def pbo_cscv(M: np.ndarray, s: int = 8) -> dict:
         lam.append(math.log(w / (1 - w)))
     lam = np.array(lam)
     return {"pbo": float((lam <= 0).mean()), "combinations": int(len(lam)), "trials": int(N)}
+
+
+def rank_ic(score: np.ndarray, y: np.ndarray, mask: np.ndarray) -> float:
+    """1 期のスコアと実現超過リターンの順位相関（スピアマン）。対象銘柄で、両方が有限のものだけ。"""
+    m = mask & np.isfinite(score) & np.isfinite(y)
+    if m.sum() < 20:
+        return float("nan")
+    a, b = score[m].argsort().argsort().astype(float), y[m].argsort().argsort().astype(float)
+    a, b = a - a.mean(), b - b.mean()
+    den = math.sqrt((a * a).sum() * (b * b).sum())
+    return float((a * b).sum() / den) if den > 0 else float("nan")
+
+
+def quantile_spread(score: np.ndarray, y: np.ndarray, mask: np.ndarray, q: int = 5) -> float:
+    """スコア上位 1/q と下位 1/q の、実現超過リターンの平均の差（コスト前）。"""
+    m = mask & np.isfinite(score) & np.isfinite(y)
+    if m.sum() < 5 * q:
+        return float("nan")
+    order = np.argsort(score[m])
+    k = m.sum() // q
+    yy = y[m][order]
+    return float(yy[-k:].mean() - yy[:k].mean())
+
+
+def ic_summary(ics: np.ndarray, years: np.ndarray, pre_era: np.ndarray, top_gain: np.ndarray, spread: np.ndarray) -> dict:
+    """IC の平均・t 値・正の割合・年率の情報比（IR）。暦年別・期間（旧区分 / 新区分）別。top_gain: 上位 15 の平均超過 − 母集団の平均超過（コスト前）。"""
+    def one(x):
+        x = x[np.isfinite(x)]
+        n = len(x)
+        sd = x.std(ddof=1) if n > 2 else float("nan")
+        return {"n": int(n), "mean": float(x.mean()) if n else float("nan"), "t": float(x.mean() / (sd / math.sqrt(n))) if n > 2 and sd > 0 else float("nan"),
+                "share_positive": float((x > 0).mean()) if n else float("nan"), "ir_annual": float(x.mean() / sd * math.sqrt(PERIODS_PER_YEAR)) if n > 2 and sd > 0 else float("nan")}
+    out = {"all": one(ics), "by_era": {"old_markets(<2022-04-04)": one(ics[pre_era]), "new_markets(>=2022-04-04)": one(ics[~pre_era])},
+           "by_year": {int(y): one(ics[years == y]) for y in sorted(set(years))}}
+    g = top_gain[np.isfinite(top_gain)]
+    out["top15_minus_universe_before_cost_ann"] = float(g.mean() * PERIODS_PER_YEAR) if len(g) else float("nan")
+    sp = spread[np.isfinite(spread)]
+    out["quintile_spread_per_period"] = float(sp.mean()) if len(sp) else float("nan")
+    return out

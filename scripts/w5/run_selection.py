@@ -26,6 +26,7 @@ from selectlib import evalsel, features, model, portfolio  # noqa: E402
 from selectlib.panel import HOLD, Panel  # noqa: E402
 
 COSTS = (0.0, 10.0, 15.0, 30.0)
+ERA_SPLIT = pd.Timestamp("2022-04-04")        # プライム・スタンダード発足。これより前は旧区分（案を採用。利用者承認 2026-11-14）
 BASE_COST = 15.0
 MODELS = {"SEL-A": ("ridge", features.SEL_A), "SEL-B": ("ridge", features.SEL_B), "SEL-C1": ("ridge", features.SEL_A + features.SEL_B),
           "SEL-C2": ("lgbm", features.SEL_A + features.SEL_B)}
@@ -63,7 +64,7 @@ def earnings_in_window(P, fins: pd.DataFrame, t_idx: list, picks: dict) -> float
     return hit / tot if tot else float("nan")
 
 
-def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods: int = model.MIN_TRAIN_PERIODS, models=None, costs=COSTS,
+def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min_periods: int = model.MIN_TRAIN_PERIODS, models=None, costs=COSTS,
          write=True) -> dict:
     pr, fl, tp, iv, fins = load(root)
     P = Panel.from_frames(pr, fl, tp)
@@ -80,7 +81,7 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
     ledger = AppendOnlyLedger(root / "ledger" / "trials.jsonl")
     code_ver = "w5-protocol-v1"
     data_sha = manifest_sha(root)
-    results, port_returns = {}, {}
+    results, port_returns, ic_all = {}, {}, {}
     for mname, (kind, names) in (models or MODELS).items():
         if kind == "lgbm":
             try:
@@ -101,6 +102,11 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
         sub = t_idx[k0:]
         univ = np.array([np.nanmean(np.where(mask[k], raw[k], np.nan)) for k in range(k0, len(t_idx))])
         years = np.array([P.dates[T + 1].year for T in sub])
+        pre_era = np.array([P.dates[T + 1] < ERA_SPLIT for T in sub])
+        ics = np.array([evalsel.rank_ic(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
+        gain = np.array([np.nanmean(y[k][evalsel.top_picks(sc[k])]) - np.nanmean(y[k][mask[k]]) for k in range(k0, len(t_idx))])
+        spr = np.array([evalsel.quantile_spread(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
+        ic_all[mname] = evalsel.ic_summary(ics, years, pre_era, gain, spr)
         for wscheme in ("equal", "invvol"):
             for use_gate in (False, True):
                 picks_all = {}
@@ -116,8 +122,13 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
                     n = len(pret)
                     s = evalsel.summarize(pret, top[k0:k0 + n], univ[:n])
                     yearly = evalsel.by_year(pret, top[k0:k0 + n], years[:n])
+                    era = {}
+                    for nm, sel in (("old_markets", pre_era[:n]), ("new_markets", ~pre_era[:n])):
+                        if sel.sum() >= 6:
+                            e = evalsel.summarize(pret[sel], top[k0:k0 + n][sel], univ[:n][sel])
+                            era[nm] = {k: e[k] for k in ("periods", "excess_vs_topix_ann", "excess_vs_univ_ann", "t_vs_topix", "t_vs_univ")}
                     tag = f"{mname}|{wscheme}|gate={int(use_gate)}|cost={bps:g}"
-                    rec = {"summary": s, "gate": evalsel.gate_check(s, yearly), "by_year": yearly,
+                    rec = {"summary": s, "gate": evalsel.gate_check(s, yearly), "by_year": yearly, "by_era": era,
                            "fills": {"bought": int(sum(x["bought"] for x in r["info"])), "skipped": int(sum(x["skipped"] for x in r["info"])),
                                      "sell_delayed": int(sum(x.get("sell_delayed", 0) for x in r["info"])),
                                      "sell_forced": int(sum(x.get("sell_forced", 0) for x in r["info"]))},
@@ -132,10 +143,16 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
                                                       "protocol": code_ver, "data_manifest_sha256": data_sha, "universe_mode": mode})
     tags = [t for t in port_returns if t.endswith(f"cost={BASE_COST:g}")]
     out = {"universe_mode": mode, "rebalances_total": len(t_idx), "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
-           "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
+           "ic": ic_all, "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
     if tags:
         n_min = min(len(port_returns[t]) for t in tags)
-        sharpes = np.array([evalsel.sharpe(port_returns[t][:n_min]) for t in tags])
+        seen = {}
+        for r in ledger._rows():                                        # これまでの全試行（同じ設定・同じデータの重複は 1 つ）
+            if r["type"] == "trial":
+                p = r["payload"]
+                seen[(p["tag"], p["universe_mode"], p["data_manifest_sha256"])] = p["sharpe_period"]
+        sharpes = np.array([v for v in seen.values()], dtype=float)
+        out["trials_in_ledger_unique"] = int(len(seen))
         out["pbo"] = evalsel.pbo_cscv(np.column_stack([port_returns[t][:n_min] for t in tags]), s=8)
         for t in tags:
             results[t]["dsr"] = evalsel.deflated_sharpe(port_returns[t][:n_min], sharpes[np.isfinite(sharpes)])
@@ -152,13 +169,20 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="data/jquants")
-    ap.add_argument("--universe-mode", choices=("post2022", "proposal_pre2022"), default="post2022")
+    ap.add_argument("--universe-mode", choices=("post2022", "proposal_pre2022"), default="proposal_pre2022",
+                    help="既定は旧区分の案を含める（承認済み）。post2022 は 2022-04-04 以降のみ（感度の確認用）")
     a = ap.parse_args()
     res = main(Path(a.root), a.universe_mode)
     brief = {t: {"excess_vs_topix_ann": round(v["summary"]["excess_vs_topix_ann"], 4), "excess_vs_univ_ann": round(v["summary"]["excess_vs_univ_ann"], 4),
                  "t_vs_topix": round(v["summary"]["t_vs_topix"], 2), "periods": v["summary"]["periods"], "gate_all_pass": v["gate"]["all_pass"],
                  "reconciles": v["ledger_chain"] if False else v["ledger_reconciles"]}
              for t, v in res["trials"].items() if "summary" in v and t.endswith(f"cost={BASE_COST:g}")}
-    print(json.dumps({"universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "pbo": res.get("pbo"),
+    ic_brief = {m: {"ic_mean": round(v["all"]["mean"], 4), "t": round(v["all"]["t"], 2), "share_positive": round(v["all"]["share_positive"], 2),
+                    "ir_annual": round(v["all"]["ir_annual"], 2), "n": v["all"]["n"],
+                    "old_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["old_markets(<2022-04-04)"].items() if k in ("n", "mean", "t")},
+                    "new_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["new_markets(>=2022-04-04)"].items() if k in ("n", "mean", "t")},
+                    "top15_minus_universe_before_cost_ann": round(v["top15_minus_universe_before_cost_ann"], 4),
+                    "quintile_spread_per_period": round(v["quintile_spread_per_period"], 4)} for m, v in res["ic"].items()}
+    print(json.dumps({"ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "pbo": res.get("pbo"),
                       "caution": res["caution"], "ledger_chain": res["ledger_chain"]}, ensure_ascii=False, indent=1))
     print("詳細（集計のみ）:", Path(a.root) / "results" / "w5" / "summary.json")
