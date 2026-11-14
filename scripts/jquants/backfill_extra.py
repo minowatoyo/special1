@@ -2,7 +2,8 @@
 
   python scripts/jquants/backfill_extra.py              # 計画（通信なし）
   python scripts/jquants/backfill_extra.py --execute    # 実取得（再開可。W3 と同じチェックポイント・失敗の扱い）
-  1) 信用取引週末残高: 営業日ごとに published_date 指定（公表のない日は 0 行で正常。全期間を漏れなく取る）
+  1) 信用取引週末残高: 営業日ごとに date（基準日）指定。基準日でない日は 0 行で正常。published_date 指定は古い週が取れないので使わない
+     （古いデータは公表日が空のため。2026-11 の確認）
   2) 業種別空売り比率: 業種（S33）ごとに from/to 指定
   3) 投資部門別売買状況: from/to 指定
 モデル入力にはしない（事前固定した除去実験を通すまで）。生データは data/jquants/raw、取得ログ・チェックポイントは W3 と共通。
@@ -23,7 +24,7 @@ PRICE_PER_MIN = 100
 
 
 def plan_extra(days: list, s33: list) -> list:
-    jobs = [("/v2/markets/margin-interest", {"published_date": d.isoformat()}, PRICE_PER_MIN) for d in days]
+    jobs = [("/v2/markets/margin-interest", {"date": d.isoformat()}, PRICE_PER_MIN) for d in days]
     first, last = days[0].isoformat(), days[-1].isoformat()
     jobs += [("/v2/markets/short-ratio", {"s33": s, "from": first, "to": last}, PRICE_PER_MIN) for s in s33]
     jobs.append(("/v2/equities/investor-types", {"from": first, "to": last}, PRICE_PER_MIN))
@@ -49,7 +50,7 @@ def main() -> None:
     end = min(date.fromisoformat(a.end), bf.prev_business_day(date.today())) if a.end else bf.prev_business_day(date.today())
     n = int((end - oldest).days * 245 / 365)
     print(f"[計画] 契約最古日 {oldest}／期間 {oldest}〜{end}（営業日は概算 {n}）")
-    print(f"  /v2/markets/margin-interest  約 {n} 回（営業日ごと・published_date）／/v2/markets/short-ratio  33〜34 回（業種ごと）／/v2/equities/investor-types  1 回")
+    print(f"  /v2/markets/margin-interest  約 {n} 回（営業日ごと・date）／/v2/markets/short-ratio  33〜34 回（業種ごと）／/v2/equities/investor-types  1 回")
     print(f"  合計 約 {n + 36} リクエスト／所要の目安 約 {(n + 36) / PRICE_PER_MIN:.0f} 分")
     if not a.execute:
         print("（通信なし。実取得は --execute）")

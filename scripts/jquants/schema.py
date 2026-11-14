@@ -111,8 +111,15 @@ def normalize_margin(rows: list[dict], trading_days) -> pd.DataFrame:
         df[c] = pd.to_datetime(df[c])
     num = [c for c in df.columns if c not in ("pub_date", "date", "code", "iss_type")]
     df[num] = df[num].apply(pd.to_numeric, errors="coerce")
-    df["usable_from"] = _next_day(df["pub_date"], trading_days)
-    return df.drop_duplicates(["code", "date", "pub_date"], keep="last").sort_values(["code", "date"]).reset_index(drop=True)
+    # 公表日がある新しい週は、その翌営業日。古い週は公表日が空なので、保守的に「基準日の 6 暦日後の翌営業日」
+    base = df["pub_date"].where(df["pub_date"].notna(), df["date"] + pd.Timedelta(days=6))
+    df["usable_from"] = _next_day(base, trading_days)
+    df["pub_date_missing"] = df["pub_date"].isna()
+    df = df.assign(_pd=df["pub_date"].fillna(pd.Timestamp("1900-01-01")))
+    df = df.drop_duplicates(["code", "date", "iss_type", "_pd"], keep="last").drop(columns="_pd")
+    # 同じ (銘柄, 基準日, 種別) が公表日の有無で重複したら、公表日のある行を残す
+    df = df.sort_values(["code", "date", "iss_type", "pub_date_missing"]).drop_duplicates(["code", "date", "iss_type"], keep="first")
+    return df.sort_values(["code", "date"]).reset_index(drop=True)
 
 
 def normalize_short_ratio(rows: list[dict], trading_days) -> pd.DataFrame:

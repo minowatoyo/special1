@@ -486,6 +486,22 @@ def test_backfill_extra_plan_and_resume(tmp_path):
     st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
     assert not st["fail"] and len(backfill.load_checkpoint(tmp_path)) == 6
     assert backfill.run_jobs(FakeClient({}), jobs, tmp_path, sleep=lambda s: None)["ok"] == 0       # 再実行で何も取らない
-    c2 = FakeClient({("/v2/markets/margin-interest", None): [(200, [], 1)]})                         # 公表のない日は 0 行で正常（失敗にしない）
+    c2 = FakeClient({("/v2/markets/margin-interest", d): [(200, [], 1)] for d in ("2026-11-02", "2026-11-04", "2026-11-05")})                         # 公表のない日は 0 行で正常（失敗にしない）
     st2 = backfill.run_jobs(c2, jobs, tmp_path / "z", sleep=lambda s: None)
     assert not st2["fail"] and st2["zero_rows_accepted"] == 3
+
+
+def test_margin_old_weeks_without_publication_date_use_conservative_lag_and_dedup_prefers_published():
+    days = pd.bdate_range("2017-03-01", "2017-04-28")
+    row = {"Date": "2017-03-10", "Code": "72030", "IssType": "1", "ShrtVol": "1", "LongVol": "2"}
+    old = schema.normalize_margin([{**row, "PubDate": None}], days)
+    assert old["pub_date_missing"].iloc[0] and old["usable_from"].iloc[0] == pd.Timestamp("2017-03-17")     # 3/10 + 6 暦日 = 3/16 の翌営業日
+    both = schema.normalize_margin([{**row, "PubDate": None}, {**row, "PubDate": "2017-03-14"}], days)
+    assert len(both) == 1 and not both["pub_date_missing"].iloc[0] and both["usable_from"].iloc[0] == pd.Timestamp("2017-03-15")
+
+
+def test_backfill_extra_margin_uses_date_param():
+    import backfill_extra
+    from datetime import date
+    jobs = backfill_extra.plan_extra([date(2026, 11, 2), date(2026, 11, 4)], ["3700"])
+    assert jobs[0] == ("/v2/markets/margin-interest", {"date": "2026-11-02"}, 100)
