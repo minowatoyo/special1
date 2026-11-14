@@ -69,3 +69,48 @@ def walk_scores(feats: dict, names: list, y_rank: np.ndarray, mask: np.ndarray, 
         else:
             raise ValueError(kind)
     return scores
+
+
+def walk_coefs(feats: dict, names: list, y_rank: np.ndarray, mask: np.ndarray, alpha: float = ALPHA, min_periods: int = MIN_TRAIN_PERIODS,
+               purge: int = 2) -> np.ndarray:
+    """期ごとのリッジ係数 [期, 特徴量]（学習が足りない期は NaN）。係数の符号の安定性の診断に使う。"""
+    K = mask.shape[0]
+    out = np.full((K, len(names)), np.nan)
+    for k in range(K):
+        tr = [j for j in range(0, k - purge + 1) if mask[j].any()]
+        if len(tr) < min_periods:
+            continue
+        Xs, ys = [], []
+        for j in tr:
+            X, cols = stack(feats, names, j, mask)
+            y = y_rank[j, cols]
+            ok = np.isfinite(y)
+            Xs.append(X[ok])
+            ys.append(y[ok])
+        out[k] = ridge_fit(np.vstack(Xs), np.concatenate(ys), alpha)[0]
+    return out
+
+
+def predict_last(feats: dict, names: list, y_rank: np.ndarray, mask: np.ndarray, kind: str = "ridge", alpha: float = ALPHA) -> np.ndarray:
+    """最後の行（まだ結果が出ていない期）のスコア [銘柄]。学習は、それより前のラベルが確定している期すべて。"""
+    K = mask.shape[0]
+    tr = [j for j in range(K - 1) if mask[j].any() and np.isfinite(y_rank[j]).any()]
+    Xs, ys = [], []
+    for j in tr:
+        X, cols = stack(feats, names, j, mask)
+        y = y_rank[j, cols]
+        ok = np.isfinite(y)
+        Xs.append(X[ok])
+        ys.append(y[ok])
+    X, y = np.vstack(Xs), np.concatenate(ys)
+    Xk, ck = stack(feats, names, K - 1, mask)
+    out = np.full(mask.shape[1], np.nan)
+    if kind == "ridge":
+        b, a0 = ridge_fit(X, y, alpha)
+        out[ck] = Xk @ b + a0
+    else:
+        import lightgbm as lgb
+        params = {"objective": "regression", "learning_rate": 0.03, "max_depth": 3, "num_leaves": 8, "min_data_in_leaf": 200, "bagging_fraction": 0.8,
+                  "bagging_freq": 1, "seed": 0, "verbose": -1, "deterministic": True, "force_row_wise": True, "num_threads": 1}
+        out[ck] = lgb.train(params, lgb.Dataset(X, label=y), num_boost_round=200).predict(Xk)
+    return out

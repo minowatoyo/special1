@@ -33,8 +33,10 @@ MODELS = {"SEL-A": ("ridge", features.SEL_A), "SEL-B": ("ridge", features.SEL_B)
 
 
 def load(root: Path):
-    pr = pd.read_parquet(root / "processed" / "prices_daily.parquet", columns=["date", "code", "open", "close", "adj_open", "adj_high", "adj_low", "adj_close",
-                                                                                 "turnover", "limit_up", "limit_down"])
+    import pyarrow.parquet as pq
+    pf = root / "processed" / "prices_daily.parquet"
+    want = ["date", "code", "open", "close", "adj_open", "adj_high", "adj_low", "adj_close", "turnover", "limit_up", "limit_down", "adj_volume"]
+    pr = pd.read_parquet(pf, columns=[c for c in want if c in pq.read_schema(pf).names])
     fl = pd.read_parquet(root / "processed" / "quality_flags.parquet", columns=["code", "date", "no_trade"])
     tp = pd.read_parquet(root / "processed" / "topix_daily.parquet")
     iv = pd.read_parquet(root / "processed" / "listed_master.parquet")

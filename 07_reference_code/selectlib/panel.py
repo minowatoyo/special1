@@ -39,7 +39,8 @@ class Panel:
             m[r, c] = p[col].to_numpy(dtype=dtype)
             return m
         arrays = {"raw_open": mat("open"), "raw_close": mat("close"), "adj_open": mat("adj_open"), "adj_high": mat("adj_high"),
-                  "adj_low": mat("adj_low"), "adj_close": mat("adj_close"), "turnover": mat("turnover")}
+                  "adj_low": mat("adj_low"), "adj_close": mat("adj_close"), "turnover": mat("turnover"),
+                  "volume": mat("adj_volume") if "adj_volume" in p.columns else np.full((len(dates), len(codes)), np.nan)}
         for col in ("limit_up", "limit_down"):
             m = np.zeros((len(dates), len(codes)), dtype=bool)
             m[r, c] = (p[col].astype(str) == "1").to_numpy()
@@ -49,6 +50,18 @@ class Panel:
     def rebalance_idx(self, start: int = 0) -> list:
         """T の位置: start から 21 営業日ごと。売却（T+22）の日付がない T は、売買側で除かれる。"""
         return list(range(start, len(self.dates) - HOLD - 1, HOLD))
+
+    def va60(self) -> np.ndarray:
+        """売買代金の 60 営業日平均（売買なしの日は 0）[日付, 銘柄]。"""
+        return pd.DataFrame(self.turnover).fillna(0.0).rolling(schema.VA_WINDOW, min_periods=schema.VA_WINDOW).mean().to_numpy()
+
+    def eligible_daily(self, intervals: pd.DataFrame, markets, min_history: int = MIN_HISTORY, chunk: int = 200) -> np.ndarray:
+        """全営業日の対象銘柄のマスク [日付, 銘柄]（eligible をまとめて、日付を分けて計算）。"""
+        out = np.zeros((len(self.dates), len(self.codes)), dtype=bool)
+        for a in range(0, len(self.dates), chunk):
+            idx = list(range(a, min(a + chunk, len(self.dates))))
+            out[idx] = self.eligible(intervals, markets, idx, min_history=min_history)
+        return out
 
     def eligible(self, intervals: pd.DataFrame, markets, t_idx: list, min_history: int = MIN_HISTORY) -> np.ndarray:
         """リバランス日ごとの対象銘柄のマスク [len(t_idx), 銘柄]。schema.universe と同じ条件（内国普通株・市場区分・
