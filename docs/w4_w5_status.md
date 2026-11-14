@@ -115,3 +115,9 @@ python scripts/w5/exclusion_study.py   # 約 5〜10 分。信用残の「避け�
 python scripts/w5/s2_portfolio.py      # 約 3〜5 分。1,000 万円・現物・100 株単位・コスト込みで、S2 が口座にいくら残るか。結果は results/s2_portfolio/
 ```
 仕様は docs/w5_protocol.md「S2 の実行可能性」（事前固定）。試行は 2 本（主: 段階 B のみ、副: 段階 A＋B）。確認期間は S2 で既読なので、新しい証拠ではなく、目減りの計算。
+
+## 追加（2026-11-14）: 型破りの探索（強制的な売買と、会社の癖）
+```
+python scripts/w5/unconventional_study.py   # 約 5〜10 分。12 検定（市場の昇格、貸借銘柄の選定、株式分割、ストップ高・安、権利落ち後の戻り、進捗率、自社株買い）。結果は results/unconventional/
+```
+仕様は docs/w5_protocol.md「型破りの探索」（事前固定。予測の向きを先に書いた）。発見期間で BH を通り、予測と同じ向きのものだけ、確認期間を 1 度読む。
