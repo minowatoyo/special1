@@ -90,3 +90,50 @@ def test_nan_open_on_sell_uses_forced_valuation_after_max_delay():
     r = pf.simulate(raw, adj, ul, ll, [5], {0: {0: 1.0}}, initial=1_000_000, bps=0)
     sell = r["ledger"][r["ledger"]["side"] == "sell"].iloc[0]
     assert sell["forced"] and sell["delay"] == pf.MAX_DELAY
+
+
+# ---- 差分売買 ----
+def test_diff_equals_full_when_every_pick_is_replaced():
+    raw, adj, ul, ll = mats(n_dates=100, prices=((1000.0, 800.0, 1500.0),), growth=(0.002, 0.001, 0.003))
+    R = [2, 2 + pf.HOLD, 2 + 2 * pf.HOLD]
+    picks = {0: {0: 1.0}, 1: {1: 1.0}, 2: {2: 1.0}}                       # 毎回、別の銘柄に全入れ替え
+    a = pf.simulate(raw, adj, ul, ll, R, picks, initial=5_000_000, bps=15)
+    b = pf.simulate_diff(raw, adj, ul, ll, R, picks, initial=5_000_000, bps=15)
+    assert a["final_cash"] == b["final_cash"]
+    assert pf.replay_ledger(b["ledger"], 5_000_000) == b["final_cash"]
+
+
+def test_diff_trades_far_less_when_picks_repeat_and_ledger_reconciles():
+    raw, adj, ul, ll = mats(n_dates=140, prices=((1000.0, 800.0, 1500.0),), growth=(0.002, -0.001, 0.003))
+    R = [2 + i * pf.HOLD for i in range(5)]
+    picks = {k: {0: 1 / 3, 1: 1 / 3, 2: 1 / 3} for k in range(5)}         # 毎回、同じ 3 銘柄
+    full = pf.simulate(raw, adj, ul, ll, R, picks, initial=9_000_000, bps=15)
+    diff = pf.simulate_diff(raw, adj, ul, ll, R, picks, initial=9_000_000, bps=15)
+    assert pf.replay_ledger(diff["ledger"], 9_000_000) == diff["final_cash"] >= 0
+    assert diff["ledger"]["cost"].sum() < 0.4 * full["ledger"]["cost"].sum()
+    assert pf.turnover(diff["ledger"], diff["equity"]) < 0.35 < 0.9 < pf.turnover(full["ledger"], full["equity"])
+    assert len(diff["equity"]) == len(diff["periods"]) + 1 == len(full["equity"])
+    gross_full = full["final_cash"] + full["ledger"]["cost"].sum()
+    gross_diff = diff["final_cash"] + diff["ledger"]["cost"].sum()
+    assert abs(gross_full - gross_diff) < 0.02 * 9_000_000                 # コスト前の成績はほぼ同じ（ロットの端数ぶんの差）
+
+
+def test_diff_holds_through_split_without_phantom_gain_and_delays_limit_down_sale():
+    raw, adj, ul, ll = mats(n_dates=100, prices=((1000.0, 1000.0),), growth=(0.0, 0.0))
+    raw[20:, 0] = 500.0                                                    # 保有の途中で 2 分割（未調整は半値、調整後は一定）
+    R = [2, 2 + pf.HOLD]
+    r = pf.simulate_diff(raw, adj, ul, ll, R, {0: {0: 1.0}, 1: {0: 1.0}}, initial=1_000_000, bps=0)
+    assert abs(r["final_cash"] - 1_000_000) <= 1000                       # 端数の現金ぶんだけ
+    ll2 = ll.copy()
+    ll2[2 + pf.HOLD + 1, 0] = True                                         # 2 回目の買い日にストップ安の銘柄 0 を、入れ替えで売る
+    r2 = pf.simulate_diff(raw, adj, ul, ll2, R, {0: {0: 1.0}, 1: {1: 1.0}}, initial=1_000_000, bps=0)
+    sell = r2["ledger"][(r2["ledger"]["side"] == "sell") & (r2["ledger"]["code_col"] == 0)].iloc[0]
+    assert sell["delay"] == 1 and pf.replay_ledger(r2["ledger"], 1_000_000) == r2["final_cash"]
+
+
+def test_diff_never_overspends_cash_and_skips_untradable():
+    raw, adj, ul, ll = mats(n_dates=100, prices=((1000.0, 1000.0),), growth=(0.0, 0.0))
+    ul[3, 1] = True                                                        # 買い日にストップ高 → 銘柄 1 は買えない
+    r = pf.simulate_diff(raw, adj, ul, ll, [2], {0: {0: 0.5, 1: 0.5}}, initial=2_000_000, bps=15)
+    assert r["info"][0]["bought"] == 1 and r["info"][0]["skipped"] == 1 and r["final_cash"] > 0
+    assert pf.replay_ledger(r["ledger"], 2_000_000) == r["final_cash"]

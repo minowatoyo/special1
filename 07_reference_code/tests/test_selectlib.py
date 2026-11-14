@@ -192,16 +192,18 @@ def test_run_selection_end_to_end_on_synthetic_processed_data(tmp_path):
     fins.to_parquet(out / "fins_summary.parquet", index=False)
     res = run_selection.main(root, "post2022", min_history=300, min_periods=4, models={"SEL-A": ("ridge", features.SEL_A), "SEL-C1": ("ridge", features.SEL_A + features.SEL_B)},
                              costs=(0.0, 15.0))
-    assert res["ledger_chain"]["ok"] and res["n_trials_logged"] == 2 * 2 * 2 * 2
+    assert res["ledger_chain"]["ok"] and res["n_trials_logged"] == 2 * 6 * 2
     for tag, v in res["trials"].items():
         assert v["ledger_reconciles"], tag
-    assert res["pbo"]["trials"] == 8 and (root / "results" / "w5" / "summary.json").exists()
+    assert res["pbo"]["trials"] == 12 and (root / "results" / "w5" / "summary.json").exists()
     t0, t15 = res["trials"]["SEL-A|equal|gate=0|cost=0"], res["trials"]["SEL-A|equal|gate=0|cost=15"]
     assert t0["summary"]["port_ann"] > t15["summary"]["port_ann"]                       # コストを引くと成績は下がる
     assert "dsr" in t15 and res["caution"]
     ic = res["ic"]["SEL-A"]
     assert ic["all"]["n"] > 3 and "old_markets(<2022-04-04)" in ic["by_era"] and np.isfinite(ic["quintile_spread_per_period"])
-    assert res["trials_in_ledger_unique"] == 16
+    assert res["trials_in_ledger_unique"] == 24
+    d = res["diff_vs_full_at_base_cost"]["SEL-A|equal"]
+    assert d["turnover_per_period"]["diff"] <= d["turnover_per_period"]["full"] + 1e-9 and d["total_cost_yen"]["diff"] <= d["total_cost_yen"]["full"]
 
 
 def test_forecast_tools_record_only_canonical_data_and_chain_verifies(tmp_path):

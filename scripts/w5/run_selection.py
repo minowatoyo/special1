@@ -116,8 +116,9 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
         gain = np.array([_nm(y[k][evalsel.top_picks(sc[k])]) - _nm(y[k][mask[k]]) for k in range(k0, len(t_idx))])
         spr = np.array([evalsel.quantile_spread(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
         ic_all[mname] = evalsel.ic_summary(ics, years, pre_era, gain, spr)
-        for wscheme in ("equal", "invvol"):
-            for use_gate in (False, True):
+        combos = [(ex, w, g) for ex in ("full", "diff") for w in ("equal", "invvol") for g in (False, True) if not (ex == "diff" and g)]
+        for exec_kind, wscheme, use_gate in combos:
+            if True:
                 picks_all = {}
                 for i, k in enumerate(range(k0, len(t_idx))):
                     if use_gate and gate[k]:
@@ -126,7 +127,8 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
                     cols = evalsel.top_picks(sc[k])
                     picks_all[i] = evalsel.weights(cols, wscheme, sig[k])
                 for bps in costs:
-                    r = portfolio.simulate(P.raw_open, P.adj_open, P.limit_up, P.limit_down, sub, picks_all, bps=bps)
+                    sim = portfolio.simulate if exec_kind == "full" else portfolio.simulate_diff
+                    r = sim(P.raw_open, P.adj_open, P.limit_up, P.limit_down, sub, picks_all, bps=bps)
                     pret_all = evalsel.period_returns(r["equity"])
                     n = len(pret_all)
                     sel_ok = okp[:n]
@@ -140,24 +142,35 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
                         if sel.sum() >= 6:
                             e = evalsel.summarize(pret[sel], tpx[sel], un[sel])
                             era[nm] = {k: e[k] for k in ("periods", "excess_vs_topix_ann", "excess_vs_univ_ann", "t_vs_topix", "t_vs_univ")}
-                    tag = f"{mname}|{wscheme}|gate={int(use_gate)}|cost={bps:g}"
+                    tag = f"{mname}|{wscheme}|gate={int(use_gate)}|cost={bps:g}" + ("|exec=diff" if exec_kind == "diff" else "")
                     rec = {"summary": s, "gate": evalsel.gate_check(s, yearly), "by_year": yearly, "by_era": era,
                            "fills": {"bought": int(sum(x["bought"] for x in r["info"])), "skipped": int(sum(x["skipped"] for x in r["info"])),
                                      "sell_delayed": int(sum(x.get("sell_delayed", 0) for x in r["info"])),
                                      "sell_forced": int(sum(x.get("sell_forced", 0) for x in r["info"]))},
+                           "turnover_per_period": portfolio.turnover(r["ledger"], r["equity"]),
+                           "total_cost_yen": int(r["ledger"]["cost"].sum()),
                            "ledger_reconciles": bool(portfolio.replay_ledger(r["ledger"], 10_000_000) == r["final_cash"])}
                     if bps == BASE_COST and wscheme == "equal" and not use_gate:
                         rec["earnings_in_window_share"] = earnings_in_window(P, fins, t_idx, {k0 + i: list(w) for i, w in picks_all.items() if w})
                     results[tag] = rec
                     port_returns[tag] = pret
                     if write:
-                        ledger.append_event("trial", {"tag": tag, "model": mname, "weights": wscheme, "gate": use_gate, "cost_bps": bps,
+                        ledger.append_event("trial", {"tag": tag, "model": mname, "weights": wscheme, "gate": use_gate, "cost_bps": bps, "exec": exec_kind,
                                                       "periods": n, "excess_vs_topix_ann": s["excess_vs_topix_ann"], "sharpe_period": s["sharpe_period"],
                                                       "protocol": code_ver, "data_manifest_sha256": data_sha, "universe_mode": mode})
-    tags = [t for t in port_returns if t.endswith(f"cost={BASE_COST:g}")]
+    tags = [t for t in port_returns if t.endswith(f"cost={BASE_COST:g}") or t.endswith(f"cost={BASE_COST:g}|exec=diff")]
+    cmp_ = {}
+    for t in tags:                                                      # 事前固定の比較: 基準コストで、同じモデル・重みの全売却と差分売買
+        if t.endswith("|exec=diff"):
+            f = t[: -len("|exec=diff")]
+            if f in results and "summary" in results[f] and "summary" in results[t]:
+                a, b = results[f], results[t]
+                cmp_[f.rsplit("|gate", 1)[0]] = {k: {"full": a["summary"][k], "diff": b["summary"][k]} for k in ("excess_vs_topix_ann", "excess_vs_univ_ann", "t_vs_topix", "t_vs_univ")}
+                cmp_[f.rsplit("|gate", 1)[0]]["turnover_per_period"] = {"full": a["turnover_per_period"], "diff": b["turnover_per_period"]}
+                cmp_[f.rsplit("|gate", 1)[0]]["total_cost_yen"] = {"full": a["total_cost_yen"], "diff": b["total_cost_yen"]}
     out = {"universe_mode": mode, "rebalances_total": len(t_idx), "eligible_count_min_median_max": [int(n_el.min()), int(np.median(n_el)), int(n_el.max())],
            "periods_with_small_universe(date_of_buy,count)": low, "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
-           "ic": ic_all, "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
+           "ic": ic_all, "diff_vs_full_at_base_cost": cmp_, "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
     if tags:
         n_min = min(len(port_returns[t]) for t in tags)
         seen = {}
@@ -188,15 +201,16 @@ if __name__ == "__main__":
     a = ap.parse_args()
     res = main(Path(a.root), a.universe_mode)
     brief = {t: {"excess_vs_topix_ann": round(v["summary"]["excess_vs_topix_ann"], 4), "excess_vs_univ_ann": round(v["summary"]["excess_vs_univ_ann"], 4),
-                 "t_vs_topix": round(v["summary"]["t_vs_topix"], 2), "periods": v["summary"]["periods"], "gate_all_pass": v["gate"]["all_pass"],
+                 "t_vs_topix": round(v["summary"]["t_vs_topix"], 2), "periods": v["summary"]["periods"], "turnover": round(v["turnover_per_period"], 2), "gate_all_pass": v["gate"]["all_pass"],
                  "reconciles": v["ledger_chain"] if False else v["ledger_reconciles"]}
-             for t, v in res["trials"].items() if "summary" in v and t.endswith(f"cost={BASE_COST:g}")}
+             for t, v in res["trials"].items() if "summary" in v and (t.endswith(f"cost={BASE_COST:g}") or t.endswith(f"cost={BASE_COST:g}|exec=diff"))}
     ic_brief = {m: {"ic_mean": round(v["all"]["mean"], 4), "t": round(v["all"]["t"], 2), "share_positive": round(v["all"]["share_positive"], 2),
                     "ir_annual": round(v["all"]["ir_annual"], 2), "n": v["all"]["n"],
                     "old_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["old_markets(<2022-04-04)"].items() if k in ("n", "mean", "t")},
                     "new_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["new_markets(>=2022-04-04)"].items() if k in ("n", "mean", "t")},
                     "top15_minus_universe_before_cost_ann": round(v["top15_minus_universe_before_cost_ann"], 4),
                     "quintile_spread_per_period": round(v["quintile_spread_per_period"], 4)} for m, v in res["ic"].items()}
-    print(json.dumps({"periods_with_small_universe": res["periods_with_small_universe(date_of_buy,count)"], "ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "pbo": res.get("pbo"),
+    print(json.dumps({"periods_with_small_universe": res["periods_with_small_universe(date_of_buy,count)"], "ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "diff_vs_full_at_base_cost": {k: {m: {a: round(b, 4) for a, b in d.items()} if isinstance(d, dict) else d for m, d in v.items()} for k, v in res["diff_vs_full_at_base_cost"].items()},
+                      "pbo": res.get("pbo"),
                       "caution": res["caution"], "ledger_chain": res["ledger_chain"]}, ensure_ascii=False, indent=1))
     print("詳細（集計のみ）:", Path(a.root) / "results" / "w5" / "summary.json")

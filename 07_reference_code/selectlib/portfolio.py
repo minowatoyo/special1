@@ -10,7 +10,7 @@ import math
 import numpy as np
 import pandas as pd
 
-__all__ = ["simulate", "replay_ledger", "MAX_DELAY", "HOLD"]
+__all__ = ["simulate", "simulate_diff", "replay_ledger", "turnover", "MAX_DELAY", "HOLD"]
 
 MAX_DELAY = 5     # 売却できない日の繰り延べの上限（営業日）
 HOLD = 21         # 買い日から売り日までの営業日数（T+1 → T+22）
@@ -99,3 +99,99 @@ def replay_ledger(ledger: pd.DataFrame, initial: int) -> int:
     buys = ledger[ledger["side"] == "buy"]
     sells = ledger[ledger["side"] == "sell"]
     return int(initial - (buys["notional"] + buys["cost"]).sum() + (sells["notional"] - sells["cost"]).sum())
+
+
+def turnover(ledger: pd.DataFrame, equity: list) -> float:
+    """1 期あたりの入れ替え率 = 売買代金の合計 ÷ 2 ÷ 平均資産 ÷ 期数（全売却→再購入は約 1）。"""
+    n = max(len(equity) - 1, 1)
+    return float(ledger["notional"].sum() / 2 / (np.mean(equity) * n))
+
+
+def simulate_diff(raw_open, adj_open, limit_up, limit_down, rebalance_idx, picks, initial=10_000_000, bps=15.0, lot=100) -> dict:
+    """差分売買（docs/w5_protocol.md の「差分売買」）。上位から外れた銘柄は全売却、残りは目標株数との差だけを売買する。
+    保有は (株数, 評価の基準価格, 基準日の調整後始値)。分割をまたいでも同等の価格 = 基準価格 × 調整後始値 ÷ 基準日の調整後始値 で評価する。"""
+    n_dates = raw_open.shape[0]
+    periods = [(k, T) for k, T in enumerate(rebalance_idx) if T + 1 + HOLD < n_dates]
+    cash, rows, equity, info, held = int(initial), [], [int(initial)], [], {}
+    fee = bps / 1e4
+
+    def mark(j, t):
+        sh, p_ref, a_ref, last = held[j]
+        a = adj_open[t, j]
+        return p_ref * a / a_ref if np.isfinite(a) else last
+
+    def sell(j, shares, s, price):
+        nonlocal cash
+        proceeds = _yen(shares * price)
+        cost = _yen(proceeds * fee)
+        cash += proceeds - cost
+        return proceeds, cost
+
+    def drop(j, t, d_info):
+        """保有 j を全売却（繰り延べあり）。"""
+        sh, p_ref, a_ref, _ = held[j]
+        s, d, f = _sell_index(adj_open, limit_down, j, t)
+        price = p_ref * adj_open[s, j] / a_ref
+        proceeds, cost = sell(j, sh, s, price)
+        rows.append({"idx": s, "code_col": j, "side": "sell", "shares": sh, "price": price, "notional": proceeds, "cost": cost, "delay": d, "forced": f})
+        d_info["sell_delayed"] += d > 0
+        d_info["sell_forced"] += f
+        del held[j]
+
+    for n, (k, T) in enumerate(periods):
+        tb = T + 1
+        e_pre = cash + sum(_yen(held[j][0] * mark(j, tb)) for j in held)
+        if n > 0:
+            equity.append(int(e_pre))
+        w = picks[k]
+        di = {"k": k, "T": T, "buy_idx": tb, "bought": 0, "skipped": 0, "sold_out": 0, "trimmed": 0, "topped_up": 0, "sell_delayed": 0, "sell_forced": 0}
+        for j in [j for j in held if j not in w]:
+            drop(j, tb, di)
+            di["sold_out"] += 1
+        e_post = cash + sum(_yen(held[j][0] * mark(j, tb)) for j in held)
+        targets = {}
+        for j, wt in w.items():
+            a = adj_open[tb, j]
+            price = mark(j, tb) if j in held else raw_open[tb, j]
+            if not (np.isfinite(price) and price > 0 and np.isfinite(a)):
+                targets[j] = None
+                continue
+            targets[j] = (int(math.floor(e_post * wt / (price * (1 + fee)) / lot)) * lot, price, a)
+        for j, tg in targets.items():                                      # 超過ぶんの売り
+            if tg is None or j not in held:
+                continue
+            sh, p_ref, a_ref, _ = held[j]
+            excess = sh - tg[0]
+            if excess >= lot and not limit_down[tb, j]:
+                proceeds, cost = sell(j, excess, tb, tg[1])
+                rows.append({"idx": tb, "code_col": j, "side": "sell", "shares": excess, "price": tg[1], "notional": proceeds, "cost": cost, "delay": 0, "forced": False})
+                held[j] = [sh - excess, tg[1], tg[2], tg[1]]
+                di["trimmed"] += 1
+        for j, tg in targets.items():                                      # 新規と買い増し
+            if tg is None or limit_up[tb, j]:
+                di["skipped"] += 1
+                continue
+            cur = held[j][0] if j in held else 0
+            add = tg[0] - cur
+            if add < lot:
+                if j in held:
+                    held[j] = [held[j][0], tg[1], tg[2], tg[1]]
+                continue
+            notional = _yen(add * tg[1])
+            cost = _yen(notional * fee)
+            if notional + cost > cash:
+                di["skipped"] += 1
+                continue
+            cash -= notional + cost
+            held[j] = [cur + add, tg[1], tg[2], tg[1]]
+            rows.append({"idx": tb, "code_col": j, "side": "buy", "shares": add, "price": tg[1], "notional": notional, "cost": cost, "delay": 0, "forced": False})
+            di["topped_up" if cur else "bought"] += 1
+        info.append(di)
+    if held:
+        T = periods[-1][1]
+        di = info[-1]
+        for j in list(held):
+            drop(j, T + 1 + HOLD, di)
+        equity.append(cash)
+    led = pd.DataFrame(rows, columns=["idx", "code_col", "side", "shares", "price", "notional", "cost", "delay", "forced"])
+    return {"ledger": led, "equity": equity, "final_cash": cash, "info": info, "periods": [k for k, _ in periods]}
