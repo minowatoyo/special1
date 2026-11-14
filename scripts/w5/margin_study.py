@@ -57,7 +57,7 @@ def main(root: Path, write=True) -> dict:
     if passed:
         full = tables("confirmation")
         conf = {k: full[k] for k in passed}
-        fam = f"margin|{sha[:16]}"
+        fam = f"margin{rules.exec_tag()}|{sha[:16]}"
         again = any(r["type"] == "confirmation_read" and r["payload"]["family"] == fam for r in ledger._rows())
         ledger.append_event("confirmation_read", {"family": fam, "rules": [f"{a}|h{b}" for a, b in passed], "re_read": again})
     rows = []
@@ -79,7 +79,7 @@ def main(root: Path, write=True) -> dict:
            "results": rows, "coverage": cov, "levels_discovery": [{"state": k[0], "h": k[1], **_fmt(v)} for k, v in sorted(levels.items())],
            "ledger_chain": ledger.verify(), "data_manifest_sha256": sha}
     if write:
-        d = root / "results" / "margin"
+        d = root / "results" / ("margin" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out

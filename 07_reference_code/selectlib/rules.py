@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -87,10 +88,20 @@ def forward_returns(P, h: int) -> np.ndarray:
     return F
 
 
+def exec_tag() -> str:
+    """環境変数 JQ_EXEC=open のとき、買える日の判定を修正版にする（結果の保存先・台帳の族の名前に、この印を付ける）。"""
+    return "_execopen" if os.environ.get("JQ_EXEC", "") == "open" else ""
+
+
 def executable(P) -> np.ndarray:
-    """t+1 に始値があり、ストップ高でない。"""
+    """既定（従来の判定）: t+1 に始値があり、ストップ高でない（t+1 に寄り付き後にストップ高を付けた銘柄も除く）。
+    JQ_EXEC=open: t+1 に始値があり、ストップ高で寄っていない（始値 ＝ 高値でない）。寄り付きの時点の情報だけで判定する。"""
     ex = np.zeros(P.raw_open.shape, dtype=bool)
-    ex[:-1] = np.isfinite(P.raw_open[1:]) & ~P.limit_up[1:]
+    if exec_tag():
+        at_limit = P.limit_up & (P.adj_open >= P.adj_high * (1 - 1e-9))
+        ex[:-1] = np.isfinite(P.raw_open[1:]) & ~at_limit[1:]
+    else:
+        ex[:-1] = np.isfinite(P.raw_open[1:]) & ~P.limit_up[1:]
     return ex
 
 

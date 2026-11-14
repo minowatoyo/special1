@@ -38,7 +38,7 @@ def family(acc, label, ledger, data_sha, q=0.10):
     """発見 → 補正 → 確認（1 度だけ読む）。"""
     dis = rules.discover(acc, q)
     passed = dis["passed"]
-    key = f"{label}|{data_sha[:16]}"
+    key = f"{label}{rules.exec_tag()}|{data_sha[:16]}"
     already = any(r["type"] == "confirmation_read" and r["payload"]["family"] == key for r in ledger._rows())
     conf = {}
     if passed:
@@ -88,7 +88,7 @@ def main(root: Path, write=True) -> dict:
     out["stage1_discovery_table_top20_by_p"] = [_row(k, v) | {"q": round(v["q"], 4)} for k, v in sorted(dis1["table"].items(), key=lambda kv: kv[1]["p"])[:20]]
     out["ledger_chain"] = ledger.verify()
     if write:
-        d = root / "results" / "rules"
+        d = root / "results" / ("rules" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out

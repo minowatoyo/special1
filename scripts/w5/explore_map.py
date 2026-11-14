@@ -263,7 +263,7 @@ def main(root: Path, write=True) -> dict:
     out["calendar"] = v6_calendar(P, ok, b)
     out["sector_momentum"] = v7_sectors(root, P, b)
     if write:
-        d = root / "results" / "explore"
+        d = root / "results" / ("explore" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out

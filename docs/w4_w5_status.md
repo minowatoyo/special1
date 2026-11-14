@@ -121,3 +121,18 @@ python scripts/w5/s2_portfolio.py      # 約 3〜5 分。1,000 万円・現物�
 python scripts/w5/unconventional_study.py   # 約 5〜10 分。12 検定（市場の昇格、貸借銘柄の選定、株式分割、ストップ高・安、権利落ち後の戻り、進捗率、自社株買い）。結果は results/unconventional/
 ```
 仕様は docs/w5_protocol.md「型破りの探索」（事前固定。予測の向きを先に書いた）。発見期間で BH を通り、予測と同じ向きのものだけ、確認期間を 1 度読む。
+
+## 追加（2026-11-14）: 修正した「買える日」での測り直し
+PowerShell で、環境変数を設定してから、各スクリプトを実行する（結果は `results/<名前>_execopen/` に出る。元の結果は残る）。
+```
+$env:JQ_EXEC = "open"
+python scripts/w5/rule_study.py        # 約 30〜60 分
+python scripts/w5/pattern_atlas.py     # 約 10〜20 分
+python scripts/w5/explore_map.py       # 約 10〜15 分
+python scripts/w5/bottom_study.py
+python scripts/w5/breadth_study.py
+python scripts/w5/earnings_study.py
+python scripts/w5/margin_study.py
+Remove-Item Env:JQ_EXEC                # 終わったら、元に戻す
+```
+仕様は docs/w5_protocol.md「修正した『買える日』での測り直し」。**まず rule_study・pattern_atlas・explore_map の 3 つ**（結論に使った主なもの）。残りは、必要なら。

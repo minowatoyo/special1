@@ -138,3 +138,17 @@ def test_executable_at_open_keeps_stocks_that_hit_the_limit_after_the_open():
     assert ex[500, 0] and not ex[500, 1] and not rules.executable(P)[500, 0]
     g = events.overnight_gap(P, np.array([500]), np.array([0]))
     assert abs(g[0] - (P.adj_open[501, 0] / P.adj_close[500, 0] - 1)) < 1e-12
+
+
+def test_exec_switch_changes_only_the_limit_up_after_open_case(monkeypatch):
+    P, codes, _ = seasonal_panel(n_codes=5, seed=1)
+    P.limit_up[501, 0] = True; P.adj_high[501, 0] = P.adj_open[501, 0] * 1.1       # 寄り付いた後にストップ高  # noqa: E702
+    P.limit_up[501, 1] = True; P.adj_high[501, 1] = P.adj_open[501, 1]              # ストップ高で寄った  # noqa: E702
+    monkeypatch.delenv("JQ_EXEC", raising=False)
+    legacy = rules.executable(P)
+    assert rules.exec_tag() == "" and not legacy[500, 0] and not legacy[500, 1]
+    monkeypatch.setenv("JQ_EXEC", "open")
+    fixed = rules.executable(P)
+    assert rules.exec_tag() == "_execopen" and fixed[500, 0] and not fixed[500, 1]
+    diff = fixed != legacy
+    assert diff.sum() == 1 and diff[500, 0]                                         # 他の場所は同じ

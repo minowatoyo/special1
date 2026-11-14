@@ -63,7 +63,7 @@ def main(root: Path, write=True, min_obs: int = atlas.MIN_OBS, min_periods: int 
     chosen = pos + neg
     conf = [atlas.evaluate(obs, cmask, r["sub"], r["key"], r["dims"]) for r in chosen]
     if chosen:
-        fam = f"atlas_v2|{sha[:16]}"
+        fam = f"atlas_v2{rules.exec_tag()}|{sha[:16]}"
         again = any(x["type"] == "confirmation_read" and x["payload"]["family"] == fam for x in ledger._rows())
         ledger.append_event("confirmation_read", {"family": fam, "rules": len(chosen), "tested_combinations": n_tested, "re_read": True, "version": "v2", "note": "v1 で確認期間を 1 度読んでいる。v2 は 2 度目の読み"})
     cp = np.array([c["p"] for c in conf], dtype=float)
@@ -87,7 +87,7 @@ def main(root: Path, write=True, min_obs: int = atlas.MIN_OBS, min_periods: int 
            "version": "v2（市場区分を新旧をまたぐ 3 区分に。観測が 9 割以上重なる候補を除去。確認期間は 2 度目の読み）", "long_patterns": rows[:len(pos)], "avoid_patterns": rows[len(pos):], "replicated_count": sum(x["replicated"] for x in rows),
            "ledger_chain": ledger.verify(), "data_manifest_sha256": sha}
     if write:
-        d = root / "results" / "atlas_v2"
+        d = root / "results" / ("atlas_v2" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out

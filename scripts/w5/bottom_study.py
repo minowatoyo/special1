@@ -47,7 +47,7 @@ def run_family(P, elig, fins, builders, extras, level_names, pairs, label, ledge
     if passed:
         full = tables("confirmation")
         conf = {k: full[k] for k in passed}
-        fam = f"{label}|{data_sha[:16]}"
+        fam = f"{label}{rules.exec_tag()}|{data_sha[:16]}"
         again = any(r["type"] == "confirmation_read" and r["payload"]["family"] == fam for r in ledger._rows())
         ledger.append_event("confirmation_read", {"family": fam, "rules": [f"{a}|h{b}" for a, b in passed], "re_read": again})
     rows = []
@@ -87,7 +87,7 @@ def main(root: Path, write=True) -> dict:
            "family2_descriptive_levels_discovery": descriptive_levels(acc2, [n for n in f2b if n != "drop"]), "ledger_chain": ledger.verify(),
            "data_manifest_sha256": sha}
     if write:
-        d = root / "results" / "bottom"
+        d = root / "results" / ("bottom" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out

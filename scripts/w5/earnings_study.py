@@ -60,7 +60,7 @@ def analyze(acc: dict, ledger: AppendOnlyLedger, data_sha: str, q: float = 0.10)
     if passed:
         full = tables(acc, "confirmation")
         conf = {k: full[k] for k in passed}
-        fam = f"earnings|{data_sha[:16]}"
+        fam = f"earnings{rules.exec_tag()}|{data_sha[:16]}"
         again = any(r["type"] == "confirmation_read" and r["payload"]["family"] == fam for r in ledger._rows())
         ledger.append_event("confirmation_read", {"family": fam, "rules": [f"{a}|h{b}" for a, b in passed], "re_read": again})
     res = []
@@ -85,7 +85,7 @@ def main(root: Path, write=True) -> dict:
     out = {"exploratory": True, "note": "段階 1 の結果を見たうえで追加した探索的な検証。確認は前向きの記録で行う。", **analyze(acc, ledger, rs.manifest_sha(root))}
     out["ledger_chain"] = ledger.verify()
     if write:
-        d = root / "results" / "earnings"
+        d = root / "results" / ("earnings" + rules.exec_tag())
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out
