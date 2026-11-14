@@ -65,10 +65,10 @@ def main(argv=None) -> dict:
     ap.add_argument("codes", nargs="*")
     ap.add_argument("--root", default="data/jquants")
     ap.add_argument("--n", type=int, default=30)
-    ap.add_argument("--step", type=int, default=10)
+    ap.add_argument("--step", type=int, default=None, help="評価の間隔（営業日）。既定は forecast/score が 10、outer が 5")
     a = ap.parse_args(argv)
     root = Path(a.root)
-    cfg = Config(step=a.step)
+    cfg = Config(step=a.step or (5 if a.cmd == "outer" else 10))
     ledger = AppendOnlyLedger(root / "ledger" / "forecasts.jsonl")
     if a.cmd == "forecast":
         meta = {"source": "jquants", "data_manifest_sha256": manifest_sha(root), "code_version": code_version(), "config_sha256": config_sha(cfg)}
@@ -79,14 +79,22 @@ def main(argv=None) -> dict:
         return {"outcomes_added": out, "ledger": ledger.verify()}
     codes = a.codes or liquid_codes(root, a.n)
     per_h: dict = {}
+    skipped = {"short_history": 0, "too_few_points": 0, "error": 0}
     for c in codes:
         df = ja.load_ohlcv(c, root=root).dropna(subset=["open", "high", "low", "close"])
         if len(df) < 1500:
+            skipped["short_history"] += 1
             continue
-        r = outer.outer_evaluate(walk_forward(prepare_asset(df, c, cfg), cfg), cfg)
+        try:
+            r = outer.outer_evaluate(walk_forward(prepare_asset(df, c, cfg), cfg), cfg)
+        except Exception:  # noqa: BLE001
+            skipped["error"] += 1
+            continue
         for h, v in r.items():
             if "skill_vs_B1" in v:
                 per_h.setdefault(h, []).append(v)
+            else:
+                skipped["too_few_points"] += 1
     summary = {}
     for h, vs in per_h.items():
         sk = np.array([v["skill_vs_B1"] for v in vs])
@@ -98,7 +106,8 @@ def main(argv=None) -> dict:
     d = root / "results" / "outer"
     d.mkdir(parents=True, exist_ok=True)
     (d / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"outer_evaluation": summary, "stocks_evaluated": max((len(v) for v in per_h.values()), default=0)}
+    return {"outer_evaluation": summary, "stocks_requested": len(codes), "stocks_evaluated": max((len(v) for v in per_h.values()), default=0),
+            "skipped": skipped, "step": cfg.step}
 
 
 if __name__ == "__main__":

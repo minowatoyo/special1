@@ -219,3 +219,15 @@ def test_forecast_tools_record_only_canonical_data_and_chain_verifies(tmp_path):
     rows = [__import__("json").loads(x) for x in (root / "ledger" / "forecasts.jsonl").read_text().splitlines()]
     assert all(x["payload"]["source"] == "jquants" and len(x["payload"]["data_manifest_sha256"]) == 64 for x in rows)
     assert forecast_tools.main(["score", "1234", "--root", str(root)])["outcomes_added"]["1234"] == 0                      # 期日は未到来
+
+
+def test_lgbm_path_uses_native_api_without_sklearn():
+    pytest.importorskip("lightgbm")
+    rng = np.random.default_rng(7)
+    K, N = 30, 300
+    f = rng.normal(size=(K, N))
+    y = 0.5 * f + rng.normal(size=(K, N))
+    mask = np.ones((K, N), bool)
+    s = model.walk_scores({"a": f}, ["a"], y, mask, kind="lgbm", min_periods=6)
+    ic = np.mean([np.corrcoef(s[k], y[k])[0, 1] for k in range(12, K)])
+    assert np.isfinite(s[10:]).all() and ic > 0.15

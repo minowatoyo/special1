@@ -24,8 +24,8 @@ def outer_evaluate(wf: dict, cfg, n_blocks: int = 8, min_train_frac: float = 0.4
         models = res["models"]
         ok = ev._common(res, models)
         n = int(ok.sum())
-        if n < 200:
-            out[h] = {"n": n, "note": "評価できる時点が少ない（200 未満）"}
+        if n < 100:
+            out[h] = {"n": n, "note": "評価できる時点が少ない（100 未満）"}
             continue
         c = {m: res["crps"][m][ok] for m in models}
         scale = res["scale"][ok]

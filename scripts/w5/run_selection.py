@@ -88,7 +88,11 @@ def main(root: Path, mode: str = "post2022", min_history: int = 500, min_periods
             except ImportError:
                 results[mname] = {"skipped": "lightgbm 未導入"}
                 continue
-        sc = model.walk_scores(sd, names, yr, mask, kind=kind, min_periods=min_periods)
+        try:
+            sc = model.walk_scores(sd, names, yr, mask, kind=kind, min_periods=min_periods)
+        except Exception as e:  # noqa: BLE001  一つのモデルの失敗で全体を止めない（理由は集計に残す）
+            results[mname] = {"skipped": f"{type(e).__name__}: {str(e)[:200]}"}
+            continue
         ks = [k for k in range(len(t_idx)) if np.isfinite(sc[k]).any()]
         if not ks:
             results[mname] = {"skipped": "評価できる期がない"}

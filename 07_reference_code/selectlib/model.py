@@ -60,11 +60,12 @@ def walk_scores(feats: dict, names: list, y_rank: np.ndarray, mask: np.ndarray, 
             b, a0 = ridge_fit(X, y, alpha)
             scores[k, ck] = Xk @ b + a0
         elif kind == "lgbm":
-            import lightgbm as lgb
-            mdl = lgb.LGBMRegressor(n_estimators=200, learning_rate=0.03, max_depth=3, num_leaves=8, min_child_samples=200, subsample=0.8,
-                                    subsample_freq=1, random_state=0, verbose=-1)
-            mdl.fit(X, y)
-            scores[k, ck] = mdl.predict(Xk)
+            import lightgbm as lgb          # scikit-learn 不要の本来の API を使う
+            params = {"objective": "regression", "learning_rate": 0.03, "max_depth": 3, "num_leaves": 8, "min_data_in_leaf": 200,
+                      "bagging_fraction": 0.8, "bagging_freq": 1, "seed": 0, "verbose": -1, "deterministic": True, "force_row_wise": True,
+                      "num_threads": 1}
+            bst = lgb.train(params, lgb.Dataset(X, label=y), num_boost_round=200)
+            scores[k, ck] = bst.predict(Xk)
         else:
             raise ValueError(kind)
     return scores
