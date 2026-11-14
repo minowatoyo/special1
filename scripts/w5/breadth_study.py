@@ -24,12 +24,28 @@ from selectlib import breadth, rules  # noqa: E402
 from selectlib.panel import Panel  # noqa: E402
 
 
-def drop_ext_builders() -> dict:
-    base = rules.drop_builders()["drop"]
-    out = {"drop": base}
-    for m in breadth.NAMES:
-        out[f"drop&{m}_yes"] = lambda x, m=m: base(x) & x.mkt_ext[m]
-        out[f"drop&{m}_no"] = lambda x, m=m: base(x) & ~x.mkt_ext[m]
+def stock_table(acc, flags, which: str) -> dict:
+    """下げ状態の銘柄の反発（日ごとの超過）を、極端な日（yes）とそれ以外の日（no）で比べる。
+    市場の状態は同じ日のすべての銘柄で同じなので、同じ日の yes − no は作れない。日をまたいで、yes の日の超過 − no の日の超過の平均を、
+    重ならない yes の日（かたまり）で検定する。"""
+    out = {}
+    for hi, h in enumerate(acc["horizons"]):
+        pm = rules.period_mask(acc["dates"], h, which)
+        cnt = acc["cnt"][hi, 0]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            spread = acc["sum"][hi, 0] / cnt - acc["usum"][hi] / acc["ucnt"][hi]
+        valid = pm & (cnt >= rules.MIN_SIGNALS) & (acc["ucnt"][hi] > 0)
+        for m in breadth.NAMES:
+            f = flags[m].to_numpy()
+            yes, no = valid & f, valid & ~f
+            if yes.sum() == 0 or no.sum() == 0:
+                out[(f"stock:{m}:yes-no", h)] = {"days": 0, "mean": float("nan"), "t": float("nan"), "p": float("nan"), "signals_per_day": float("nan"),
+                                                 "net_of_round_trip_cost": float("nan"), "mean_by_liquidity_tertile(low,mid,high)": [float("nan")] * 3}
+                continue
+            d = np.nan_to_num(spread - np.nanmean(spread[no]))
+            s = breadth.episode_stats(d, yes, h)
+            s.update({"signals_per_day": float("nan"), "net_of_round_trip_cost": float("nan"), "mean_by_liquidity_tertile(low,mid,high)": [float("nan")] * 3})
+            out[(f"stock:{m}:yes-no", h)] = s
     return out
 
 
@@ -65,12 +81,11 @@ def main(root: Path, write=True) -> dict:
     ledger = AppendOnlyLedger(root / "ledger" / "trials.jsonl")
     sha = rs.manifest_sha(root)
     extras = {"mkt_ext": {m: flags[m].to_numpy() for m in breadth.NAMES}}
-    acc = rules.run_pass(P, elig, drop_ext_builders(), fins, extras=extras, feats=True, progress=lambda a, b: print(f"{a}/{b} 銘柄", flush=True))
-    pairs = [(f"stock:{m}:yes-no", f"drop&{m}_yes", f"drop&{m}_no") for m in breadth.NAMES]
+    acc = rules.run_pass(P, elig, {"drop": rules.drop_builders()["drop"]}, fins, extras=extras, feats=True, progress=lambda a, b: print(f"{a}/{b} 銘柄", flush=True))
 
     def tables(which):
         t = market_table(P, flags, which)
-        t.update(rules.diff_table(acc, which, pairs, stat_fn=breadth.episode_stats))
+        t.update(stock_table(acc, flags, which))
         return t
 
     dis = tables("discovery")

@@ -304,3 +304,24 @@ def test_breadth_study_end_to_end_synthetic(tmp_path):
     res = breadth_study.main(root)
     assert res["ledger_chain"]["ok"] and len(res["results"]) == 20 and set(res["extreme_days"]) == {"M1", "M2", "M3", "M4", "M5"}
     assert (root / "results" / "breadth" / "summary.json").exists()
+
+
+def test_stock_table_compares_across_days_not_within_a_day():
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import breadth_study
+    import pandas as pd
+    dates = pd.bdate_range("2017-01-02", "2026-11-12")
+    n, rng = len(dates), np.random.default_rng(5)
+    flags = pd.DataFrame({m: np.zeros(n, bool) for m in ["M1", "M2", "M3", "M4", "M5"]}, index=dates)
+    flags.iloc[np.arange(300, n, 60), flags.columns.get_loc("M2")] = True                                        # 60 営業日おきの極端な日
+    cnt = np.full(n, 30.0)
+    sm = rng.normal(0, 0.02, n) * 30
+    sm[flags["M2"].to_numpy()] += 0.01 * 30                                               # 極端な日だけ反発が大きい
+    acc = {"names": ["drop"], "horizons": [5, 21], "dates": dates, "cnt": np.stack([cnt[None], cnt[None]]), "sum": np.stack([sm[None], sm[None]]),
+           "ucnt": np.full((2, n), 600.0), "usum": np.zeros((2, n))}
+    t = breadth_study.stock_table(acc, flags, "discovery")
+    r = t[("stock:M2:yes-no", 5)]
+    assert r["mean"] > 0.005 and r["t"] > 3 and r["days"] >= 5
+    assert t[("stock:M1:yes-no", 5)]["days"] == 0                                         # 極端な日がない指標は計算不能（NaN）
