@@ -45,7 +45,7 @@ def stage0(P, sd, yr, mask, t_idx) -> dict:
     return out
 
 
-def h0(P, sd, yr, mask, raw, top, t_idx, sig_proxy, min_periods=model.MIN_TRAIN_PERIODS) -> dict:
+def h0(P, sd, yr, mask, raw, top, t_idx, sig_proxy, min_periods=model.MIN_TRAIN_PERIODS, capital=10_000_000, lot=100) -> dict:
     out = {}
     for mname, (kind, names) in rs.MODELS.items():
         try:
@@ -62,7 +62,7 @@ def h0(P, sd, yr, mask, raw, top, t_idx, sig_proxy, min_periods=model.MIN_TRAIN_
         ideal = np.array([rs._nm(raw[k][evalsel.top_picks(sc[k])]) for k in range(k0, len(t_idx))])
         res = {}
         for bps in (0.0, 15.0):
-            r = portfolio.simulate(P.raw_open, P.adj_open, P.limit_up, P.limit_down, sub, picks, bps=bps)
+            r = portfolio.simulate(P.raw_open, P.adj_open, P.limit_up, P.limit_down, sub, picks, initial=capital, bps=bps, lot=lot)
             res[bps] = r
         ann = lambda x: float(np.mean(x) * evalsel.PERIODS_PER_YEAR)  # noqa: E731
         pr0 = evalsel.period_returns(res[0.0]["equity"])
@@ -77,9 +77,10 @@ def h0(P, sd, yr, mask, raw, top, t_idx, sig_proxy, min_periods=model.MIN_TRAIN_
             invested = led[(led["side"] == "buy") & (led["idx"] == info["buy_idx"])]["notional"].sum()
             idle.append(1 - invested / equity[i] if equity[i] > 0 else np.nan)
             target = equity[i] / 15.0
+            lotsz = lot
             for j in picks[i]:
                 p = P.raw_open[info["buy_idx"], j]
-                if np.isfinite(p) and p * 100 > target:
+                if np.isfinite(p) and p * lot > target:
                     unaff += 1
             skipped += info["skipped"]
             delayed += info.get("sell_delayed", 0) + info.get("final_sell_delayed", 0)
@@ -95,7 +96,7 @@ def h0(P, sd, yr, mask, raw, top, t_idx, sig_proxy, min_periods=model.MIN_TRAIN_
     return out
 
 
-def main(root: Path) -> dict:
+def main(root: Path, capital: int = 10_000_000, lot: int = 100) -> dict:
     pr, fl, tp, iv, fins = rs.load(root)
     P = Panel.from_frames(pr, fl, tp)
     del pr
@@ -105,14 +106,22 @@ def main(root: Path) -> dict:
     y = np.where(mask, y, np.nan)
     sd = features.standardized({**features.chart_features(P, t_idx), **features.fins_features(P, fins, t_idx)}, mask)
     yr = model.rank_gauss(y, mask)
-    out = {"stage0_feature_ic": stage0(P, sd, yr, mask, t_idx), "h0_ideal_vs_realized_equal_weight_full_rotation": h0(P, sd, yr, mask, raw, top, t_idx, None)}
+    out = {"stage0_feature_ic": stage0(P, sd, yr, mask, t_idx), "h0_ideal_vs_realized_equal_weight_full_rotation": h0(P, sd, yr, mask, raw, top, t_idx, None, capital=capital, lot=lot),
+           "h0_conditions": {"capital_yen": capital, "lot": lot, "note": "既定（1,000 万円・100 株）以外は反実仮想の診断（仕様の変更ではなく、試行でもない）"}}
     d = root / "results" / "diagnose"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
+    tag = "" if (capital, lot) == (10_000_000, 100) else f"_cap{capital}_lot{lot}"
+    (d / f"summary{tag}.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="data/jquants")
-    print(json.dumps(main(Path(ap.parse_args().root)), ensure_ascii=False, indent=1))
+    ap.add_argument("--capital", type=int, default=10_000_000)
+    ap.add_argument("--lot", type=int, default=100)
+    a = ap.parse_args()
+    r = main(Path(a.root), a.capital, a.lot)
+    if (a.capital, a.lot) != (10_000_000, 100):
+        r.pop("stage0_feature_ic", None)                      # 段階 0 は条件に依存しないので、反実仮想の実行では省く
+    print(json.dumps(r, ensure_ascii=False, indent=1))
