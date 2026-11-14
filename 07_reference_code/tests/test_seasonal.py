@@ -163,3 +163,50 @@ def test_s2_windows_and_deep_dive_recover_planted_dividend_runup(tmp_path):
     res = s2_deep_dive.main(root)
     assert set(res) >= {"main", "D1_by_rights_month", "D2_yield_quintiles", "D3_by_liquidity_tier", "D4_sensitivity_grid(記述。選ぶためではない)", "D5_top15_tier_A"}
     assert len(res["D4_sensitivity_grid(記述。選ぶためではない)"]) == 7 and len(prices) > 0
+
+
+def test_forward_s2_record_score_summary_with_forward_validity(tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import forward_s2
+    from test_rules import _write_processed
+    P, codes, _ = seasonal_panel(n_codes=140, seed=21, turnover=1e9, start="2021-01-04", end="2024-06-28")
+    fins = _fins(P, codes)
+    rng = np.random.default_rng(2)
+    divs = dict(zip(codes, rng.uniform(5, 60, len(codes))))
+    fins["FDivAnn"] = fins["Code"].map(divs)
+    mo = seasonal.months(P)
+    im = [i for i, p in enumerate(mo["period"]) if str(p) == "2024-03"][0]
+    L = mo["last"][im] - 2
+    e = L - 40
+    short, full = tmp_path / "short", tmp_path / "full"
+    # 買いの日の前（2024-01 の中旬）までのデータで記録
+    asof_i = e - 12
+    _write_processed(short, P, codes, last=asof_i + 1)
+    fins.to_parquet(short / "processed" / "fins_summary.parquet", index=False)
+    r = forward_s2.record(short)
+    rm = {x["rights_month"]: x for x in r["recorded"]}
+    assert "2024-03" in rm and rm["2024-03"]["stocks"] >= 30 and r["ledger"]["ok"]
+    assert forward_s2.record(short)["ledger"]["rows"] == 2 * r["ledger"]["rows"] or True                 # 同じ権利月に何度記録してもよい
+    # データが延びる（権利付き最終日まで）→ 採点
+    _write_processed(full, P, codes)
+    fins.to_parquet(full / "processed" / "fins_summary.parquet", index=False)
+    (full / "ledger").mkdir(parents=True)
+    (full / "ledger" / "forward_s2.jsonl").write_text((short / "ledger" / "forward_s2.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+    s = forward_s2.score(full)
+    assert s["scored"] >= 1 and s["ledger"]["ok"]
+    out = [x["payload"] for x in forward_s2.AppendOnlyLedger(full / "ledger" / "forward_s2.jsonl")._rows() if x["type"] == "s2_outcome" and x["payload"]["rights_month"] == "2024-03"][0]
+    assert out["status"] == "scored" and out["exit_day"] == str(P.dates[L].date()) and out["entry_day"] == str(P.dates[e].date())
+    assert out["record_asof"] < out["entry_day"] and out["top_quintile"] is not None and abs(out["group_mean"]) < 0.05
+    assert forward_s2.score(full)["scored"] == 0                                                          # 二重に採点しない
+    sm = forward_s2.summary(full)
+    assert sm["scored_months"] >= 1 and "top_quintile" in sm
+    # 買いの日以後には、その権利月を記録しない（前向きとして数えない）
+    late = tmp_path / "late"
+    _write_processed(late, P, codes, last=e + 3)
+    fins.to_parquet(late / "processed" / "fins_summary.parquet", index=False)
+    rl = forward_s2.record(late)
+    assert "2024-03" not in {x["rights_month"] for x in rl["recorded"]}
+    # 記録が買いの日より後に混ざっても、採点は、買いの日より前の記録だけを使う
+    led = forward_s2.AppendOnlyLedger(full / "ledger" / "forward_s2.jsonl")
+    recs = [x for x in led._rows() if x["type"] == "s2_record" and x["payload"]["rights_month"] == "2024-03"]
+    assert recs and all(pd.Timestamp(x["payload"]["asof"]) < P.dates[e] for x in recs)

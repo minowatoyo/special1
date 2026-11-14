@@ -89,3 +89,11 @@ S2 は、発見期間と確認期間の両方で再現した（上位 1/5 の超
 ```
 python scripts/w5/s2_deep_dive.py     # 約 5〜10 分。権利月別、利回り 5 段階、流動性の段階別と年別、感度の一覧、実行できる形（段階 A・上位 15 銘柄）
 ```
+
+## 追加（2026-11-14）: S2（配当の権利取り）の前向きの記録
+```
+python scripts/w5/forward_s2.py record     # データ更新のたびに（買いの予定日が約 3 か月以内の権利月の候補を、台帳に記録）
+python scripts/w5/forward_s2.py score      # 権利付き最終日を過ぎたものを採点（買いの日より前の記録だけを使う）
+python scripts/w5/forward_s2.py summary    # 12 か月以上たまるまで、結論を出さない
+```
+台帳: `data/jquants/ledger/forward_s2.jsonl`（追記専用のハッシュ連鎖）。仕様は変えない（40 営業日前の始値で買い、権利付き最終日の始値で売り、予想配当利回りの上位 1/5）。
