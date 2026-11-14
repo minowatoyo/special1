@@ -177,6 +177,26 @@ def build(P, iv: pd.DataFrame, fins: pd.DataFrame, elig: np.ndarray, va60: np.nd
     return ev, missing
 
 
+def executable_at_open(P) -> np.ndarray:
+    """t+1 の寄り付きで買えたか: 始値があり、「ストップ高の日で、始値 = 高値（ストップ高で寄った・張り付いた）」ではない。
+    rules.executable は「t+1 にストップ高を付けていない」を条件にしており、寄り付いた後にストップ高になった銘柄（買えて、上がった銘柄）まで除く。
+    ストップ高の翌日の検証では、その偏りが大きいので、寄り付きの時点の情報だけで判定する。"""
+    ex = np.zeros(P.raw_open.shape, dtype=bool)
+    at_limit = P.limit_up & (P.adj_open >= P.adj_high * (1 - 1e-9))
+    ex[:-1] = np.isfinite(P.raw_open[1:]) & ~at_limit[1:]
+    return ex
+
+
+def overnight_gap(P, t: np.ndarray, j: np.ndarray) -> np.ndarray:
+    """日 t の終値 → t+1 の始値。"""
+    t, j = np.asarray(t, int), np.asarray(j, int)
+    m = t + 1 < len(P.dates)
+    out = np.full(len(t), np.nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out[m] = P.adj_open[t[m] + 1, j[m]] / P.adj_close[t[m], j[m]] - 1
+    return out
+
+
 def excess_matrix(P, ok: np.ndarray, h: int) -> np.ndarray:
     F = np.where(ok, rules.forward_returns(P, h), np.nan)
     with np.errstate(invalid="ignore"):

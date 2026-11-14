@@ -103,6 +103,7 @@ def test_study_finds_planted_upgrade_effect_and_reads_confirmation_only_for_pass
     e1 = by["E1_market_upgrade|h=5"]
     assert e1["discovery"]["mean"] > 0.03 and e1["discovery"]["q"] < 0.10 and e1["law_candidate"] and e1["confirmation"]["mean"] > 0.03
     assert "E1_market_upgrade|h=5" in res["passed_discovery"] and res["ledger_chain"]["ok"]
+    assert set(res["diagnostic_corrected_executability"]) == {"E4a_limit_up_close", "E4b_limit_down_close"}
     for r in res["results"]:                                                         # 通過していない検定は、確認期間を読まない
         if "skipped" not in r and r["test"] not in res["passed_discovery"]:
             assert isinstance(r["confirmation"], str)
@@ -125,3 +126,15 @@ def test_null_world_has_no_law_candidates(tmp_path):
     _, _, root, _, _ = _world(tmp_path, seed=9, effect=0.0)
     res = us.main(root)
     assert res["law_candidates"] == [] and res["tests_run"] >= 2
+
+
+def test_executable_at_open_keeps_stocks_that_hit_the_limit_after_the_open():
+    P, codes, _ = seasonal_panel(n_codes=5, seed=1)
+    P.limit_up[501, 0] = True                                   # 寄り付いた後にストップ高（始値 < 高値）
+    P.adj_high[501, 0] = P.adj_open[501, 0] * 1.1
+    P.limit_up[501, 1] = True                                   # ストップ高で寄った（始値 = 高値）
+    P.adj_high[501, 1] = P.adj_open[501, 1]
+    ex = events.executable_at_open(P)
+    assert ex[500, 0] and not ex[500, 1] and not rules.executable(P)[500, 0]
+    g = events.overnight_gap(P, np.array([500]), np.array([0]))
+    assert abs(g[0] - (P.adj_open[501, 0] / P.adj_close[500, 0] - 1)) < 1e-12

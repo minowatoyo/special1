@@ -84,7 +84,23 @@ def main(root: Path, write=True, q_level: float = 0.10) -> dict:
         if "law_candidate" in r:
             o["law_candidate"] = r["law_candidate"]
         out_rows.append(o)
-    out = {"split": str(rules.SPLIT.date()), "tests_run": len(live), "passed_discovery": [r["test"] for r in passed], "law_candidates": [r["test"] for r in passed if r.get("law_candidate")],
+    # 診断（事前固定の検定の外。2026-11-14 に追加）: 「買える日」を、寄り付きの時点の情報だけで判定し直した E4a・E4b
+    ok2 = elig & events.executable_at_open(P)
+    E2 = events.excess_matrix(P, ok2, 5)
+    diag = {}
+    for name in ("E4a_limit_up_close", "E4b_limit_down_close"):
+        t, j = ev[name]
+        el = elig[t, j]
+        gap = events.overnight_gap(P, t, j)
+        d = {"note": "買える日 = 翌日に始値があり、ストップ高で寄っていない（寄り付き後のストップ高は除かない）"}
+        for sp, (lo, hi) in {"discovery": (0, b - 7), "confirmation": (b, n - 1)}.items():
+            m = (t >= lo) & (t <= hi) & el
+            d[sp] = {**_fmt(events.study(P, E2, t, j, 5, lo, hi)), "events_in_universe": int(m.sum()),
+                     "excluded_by_old_filter_share": _r(float(1 - ok[t[m], j[m]].mean())) if m.any() else None,
+                     "not_buyable_at_open_share": _r(float(1 - ok2[t[m], j[m]].mean())) if m.any() else None,
+                     "overnight_gap_close_to_next_open_mean": _r(float(np.nanmean(gap[m]))) if m.any() else None}
+        diag[name] = d
+    out = {"split": str(rules.SPLIT.date()), "diagnostic_corrected_executability": diag, "tests_run": len(live), "passed_discovery": [r["test"] for r in passed], "law_candidates": [r["test"] for r in passed if r.get("law_candidate")],
            "results": out_rows, "ledger_chain": ledger.verify(), "data_manifest_sha256": sha}
     if write:
         d = root / "results" / "unconventional"
