@@ -325,3 +325,92 @@ def test_stock_table_compares_across_days_not_within_a_day():
     r = t[("stock:M2:yes-no", 5)]
     assert r["mean"] > 0.005 and r["t"] > 2.5 and r["days"] >= 5
     assert t[("stock:M1:yes-no", 5)]["days"] == 0                                         # 極端な日がない指標は計算不能（NaN）
+
+
+def _margin_frame(P, code, long_vals, short_vals, start=300, step=5, lag=1):
+    """週次（step 営業日おき）の信用残。利用可能日 ＝ 基準日の lag 営業日後。"""
+    n = len(long_vals)
+    idx = start + step * np.arange(n)
+    return pd.DataFrame({"code": code, "date": P.dates[idx], "pub_date": P.dates[idx + lag], "long_vol": np.asarray(long_vals, float),
+                         "short_vol": np.asarray(short_vals, float), "usable_from": P.dates[idx + lag]})
+
+
+def test_margin_flags_use_only_information_available_and_exclude_stale():
+    from selectlib import margin
+    P, codes = synth_panel(n_dates=700, n_codes=4, seed=40)
+    lv = [100, 100, 100, 100, 100, 70, 70, 70]                       # 5 本目（添字 5）で、4 本前（添字 1）から −30%
+    m = _margin_frame(P, codes[0], lv, [10] * 8)
+    fl = margin.margin_flags(P, m)
+    f1, v1 = fl["K1_long_drop"]
+    j = P.codes.index(codes[0])
+    use = P.dates.get_loc(m["usable_from"].iloc[5])
+    assert not f1[use - 1, j] and f1[use, j] and v1[use, j]          # 利用可能日の前日は点灯しない、当日から点灯
+    assert v1[use + 5, j] and not v1[use + 25, j]                     # 次の記録まで有効。最後の記録から 10 暦日を超えたら無効
+    assert not v1[:, 1].any()                                         # 記録のない銘柄は、データなし（yes にも no にもならない）
+    f3, _ = fl["K3_short_surge"]
+    assert not f3[:, j].any()
+    m2 = _margin_frame(P, codes[1], [100] * 8, [10, 10, 10, 10, 10, 20, 20, 20])
+    f3b, v3b = margin.margin_flags(P, m2)["K3_short_surge"]
+    j1 = P.codes.index(codes[1])
+    assert f3b[P.dates.get_loc(m2["usable_from"].iloc[5]), j1] and not f3b[P.dates.get_loc(m2["usable_from"].iloc[4]), j1]
+
+
+def test_sector_flags_percentile_rule_and_next_day_availability():
+    from selectlib import margin
+    P, codes = synth_panel(n_dates=700, n_codes=4, seed=41)
+    n = 700
+    rng = np.random.default_rng(0)
+    ratio = 0.2 + 0.01 * rng.random(n)
+    ratio[600] = 0.5                                                  # 600 日目だけ極端に高い
+    sr = pd.DataFrame({"s33": "3700", "date": P.dates, "short_ratio": ratio})
+    sr["usable_from"] = list(P.dates[1:]) + [pd.NaT]
+    iv = pd.DataFrame({"code": codes, "s33": "3700", "valid_from": P.dates[0], "valid_to": P.dates[-1]})
+    fl = margin.sector_flags(P, sr, iv)
+    f4, v4 = fl["K4_sector_short_high"]
+    j = 0
+    assert not f4[600, j] and f4[601, j] and v4[601, j]               # 基準日の翌営業日から使える
+    assert not v4[:200, j].any()                                      # 252 日（最低 200 日）の履歴がたまるまで、データなし
+    share = f4[:, j].sum() / v4[:, j].sum()
+    assert 0.05 < share < 0.15                                        # 分位 90% 以上は、定義上、1 割ほどの日に点灯
+
+
+def test_margin_builders_are_exclusive_and_require_data():
+    df = synth.make_garch_ohlcv(n=1200, seed=9)
+    ctx = _ctx(df)
+    flag = np.zeros(len(df), bool)
+    flag[::3] = True
+    valid = np.ones(len(df), bool)
+    valid[:100] = False
+    ctx.k = {"K1_long_drop": (flag, valid)}
+    b = rules.margin_builders(["K1_long_drop"])
+    yes, no, base = b["drop&K1_long_drop_yes"](ctx), b["drop&K1_long_drop_no"](ctx), rules.drop_builders()["drop"](ctx)
+    assert not (yes & no).any() and ((yes | no) == (base & valid)).all() and not (yes | no)[:100].any()
+
+
+def test_margin_study_end_to_end_synthetic(tmp_path):
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import margin_study
+    P, codes = synth_panel(n_dates=1500, n_codes=25, seed=44)
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    rng = np.random.default_rng(1)
+    rows = []
+    for c in codes:
+        for k in range(280):
+            i = 5 * k
+            if i + 1 >= len(P.dates):
+                break
+            rows.append({"code": c, "date": P.dates[i], "pub_date": P.dates[i + 1], "long_vol": 1000 * rng.uniform(0.5, 1.5), "short_vol": 100 * rng.uniform(0.5, 1.5),
+                         "usable_from": P.dates[i + 1]})
+    pd.DataFrame(rows).to_parquet(root / "processed" / "margin_interest.parquet", index=False)
+    sr = pd.DataFrame({"s33": "3700", "date": P.dates, "short_ratio": 0.2 + 0.05 * rng.random(len(P.dates))})
+    sr["usable_from"] = list(P.dates[1:]) + [pd.NaT]
+    sr.to_parquet(root / "processed" / "short_ratio.parquet", index=False)
+    lm = pd.read_parquet(root / "processed" / "listed_master.parquet")
+    lm["s33"] = "3700"
+    lm.to_parquet(root / "processed" / "listed_master.parquet", index=False)
+    res = margin_study.main(root)
+    assert res["ledger_chain"]["ok"] and len(res["results"]) == 10 and set(res["coverage"]) == set(__import__("selectlib.margin", fromlist=["NAMES"]).NAMES)
+    assert (root / "results" / "margin" / "summary.json").exists()

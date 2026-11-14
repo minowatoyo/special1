@@ -59,3 +59,9 @@ python scripts/jquants/backfill_extra.py --execute       # 信用残・空売り
 python scripts/jquants/build_processed.py                # 加工（上の 3 表が processed に入る）
 ```
 取得できる Standard 固有データ: 信用取引週末残高（週次・銘柄別、公表日つき）、業種別空売り比率（日次・33 業種）、投資部門別売買状況（週次）。売買内訳データは Premium 限定で不可。モデルの入力にするのは、事前固定した除去実験を通してから。
+
+## 追加（2026-11-14）: 信用残・空売り比率の目印（K1〜K5、10 検定）
+```
+python scripts/w5/margin_study.py     # 約 10〜15 分（要: backfill_extra.py と build_processed.py の完了）
+```
+仕様は `docs/w5_protocol.md`。出力に、目印ごとのデータのある割合（coverage）と、yes / no の水準（記述）も出る。

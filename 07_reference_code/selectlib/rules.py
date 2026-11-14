@@ -161,6 +161,7 @@ def run_pass(P, elig: np.ndarray, builders: dict, fins: pd.DataFrame, horizons=H
             ctx.u3 = extras["u3"][:, j] if extras and "u3" in extras else np.zeros(n_t, dtype=bool)
             ctx.mkt_down = extras["mkt_down"] if extras and "mkt_down" in extras else np.zeros(n_t, dtype=bool)
             ctx.mkt_ext = extras.get("mkt_ext", {}) if extras else {}
+            ctx.k = {nm: (fm[:, j], vm[:, j]) for nm, (fm, vm) in extras["kmat"].items()} if extras and "kmat" in extras else {}
         valid = ok[:, j]
         for r, nm in enumerate(names):
             s = np.asarray(builders[nm](ctx), dtype=bool) & valid
@@ -384,3 +385,13 @@ def u3_matrix(P, fins: pd.DataFrame, elig: np.ndarray, chunk: int = 150) -> np.n
 def mkt_down(P, days: int = 20, thr: float = -0.05) -> np.ndarray:
     c = P.topix["close"]
     return (c / c.shift(days) - 1 <= thr).fillna(False).to_numpy()
+
+
+def margin_builders(names) -> dict:
+    """K1〜K5 × 下げ状態の yes / no。データのない日・銘柄は、yes にも no にも入れない。"""
+    base = drop_builders()["drop"]
+    out = {}
+    for k in names:
+        out[f"drop&{k}_yes"] = lambda x, k=k: base(x) & x.k[k][0] & x.k[k][1]
+        out[f"drop&{k}_no"] = lambda x, k=k: base(x) & ~x.k[k][0] & x.k[k][1]
+    return out
