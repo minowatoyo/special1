@@ -100,6 +100,12 @@ def main(root: Path) -> dict:
     if fs:
         days = cal if cal is not None else (pr["date"].drop_duplicates() if prices else pd.Series(dtype="datetime64[ns]"))
         save("fins_summary", schema.normalize_fins(fs, days))
+    days = cal if cal is not None else (pr["date"].drop_duplicates() if prices else pd.Series(dtype="datetime64[ns]"))
+    for name, slug, fn in (("margin_interest", "v2_markets_margin-interest", schema.normalize_margin),
+                           ("short_ratio", "v2_markets_short-ratio", schema.normalize_short_ratio),
+                           ("investor_types", "v2_equities_investor-types", schema.normalize_investor_types)):
+        rows = [r for _, rs_ in rows_of(root, slug) for r in rs_]
+        save(name, fn(rows, days) if rows else pd.DataFrame())
     for name, cols in schema.EMPTY_SLOTS.items():
         save(name, pd.DataFrame(columns=cols))
     rep["excluded_date_mismatch_rows"] = dict(EXCLUDED)

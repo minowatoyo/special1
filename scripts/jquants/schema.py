@@ -21,11 +21,14 @@ CALENDAR_MAP = {"Date": "ann_date", "Code": "code", "CoName": "name", "FY": "fis
 
 # 値を保存するだけで、モデル入力にはしない（Standard 固有。事前登録した除去実験を通すまで使わない）
 EMPTY_SLOTS = {
-    "margin_interest": ["date", "code", "long_balance", "short_balance"],
-    "short_ratio": ["date", "s33", "short_ratio"],
-    "investor_types": ["start", "end", "section", "investor", "buy", "sell"],
     "sector_indices": ["date", "index_code", "open", "high", "low", "close"],
 }
+MARGIN_MAP = {"PubDate": "pub_date", "Date": "date", "Code": "code", "IssType": "iss_type", "ShrtVol": "short_vol", "LongVol": "long_vol",
+              "ShrtNegVol": "short_neg_vol", "LongNegVol": "long_neg_vol", "ShrtStdVol": "short_std_vol", "LongStdVol": "long_std_vol",
+              "ShrtVal": "short_val", "LongVal": "long_val", "ShrtNegVal": "short_neg_val", "LongNegVal": "long_neg_val",
+              "ShrtStdVal": "short_std_val", "LongStdVal": "long_std_val"}
+SHORT_RATIO_MAP = {"Date": "date", "S33": "s33", "SellExShortVa": "sell_ex_short_va", "ShrtWithResVa": "short_with_restriction_va",
+                   "ShrtNoResVa": "short_no_restriction_va"}
 
 PRIME, STANDARD = "0111", "0112"          # 2022-04-04 以降の市場区分
 OLD_FIRST, OLD_SECOND, OLD_JASDAQ_STD = "0101", "0102", "0106"   # 旧東証一部・二部・JASDAQ スタンダード（2022-04-01 まで。案。未確定）
@@ -91,6 +94,50 @@ def normalize_calendar(rows: list[dict], fetched: str) -> pd.DataFrame:
     df["ann_date"] = pd.to_datetime(df["ann_date"])
     df["version"] = pd.to_datetime(fetched)
     return df
+
+
+def _next_day(dates: pd.Series, trading_days) -> pd.Series:
+    days = pd.DatetimeIndex(trading_days)
+    return pd.Series([days[days > d][0] if (days > d).any() else pd.NaT for d in dates], index=dates.index)
+
+
+def normalize_margin(rows: list[dict], trading_days) -> pd.DataFrame:
+    """信用取引週末残高（週次・銘柄別）。usable_from ＝ 公表日の次の営業日の引け後（公表日の当日の使用は避ける）。"""
+    df = _rename(rows, MARGIN_MAP)
+    if df.empty:
+        return df
+    df["code"] = df["code"].astype(str)
+    for c in ("pub_date", "date"):
+        df[c] = pd.to_datetime(df[c])
+    num = [c for c in df.columns if c not in ("pub_date", "date", "code", "iss_type")]
+    df[num] = df[num].apply(pd.to_numeric, errors="coerce")
+    df["usable_from"] = _next_day(df["pub_date"], trading_days)
+    return df.drop_duplicates(["code", "date", "pub_date"], keep="last").sort_values(["code", "date"]).reset_index(drop=True)
+
+
+def normalize_short_ratio(rows: list[dict], trading_days) -> pd.DataFrame:
+    """業種別空売り比率（日次）。usable_from ＝ 翌営業日（公表時刻が不明なので保守的に）。"""
+    df = _rename(rows, SHORT_RATIO_MAP)
+    if df.empty:
+        return df
+    df["date"] = pd.to_datetime(df["date"])
+    num = [c for c in df.columns if c not in ("date", "s33")]
+    df[num] = df[num].apply(pd.to_numeric, errors="coerce")
+    tot = df["sell_ex_short_va"] + df["short_with_restriction_va"] + df["short_no_restriction_va"]
+    df["short_ratio"] = (df["short_with_restriction_va"] + df["short_no_restriction_va"]) / tot.replace(0, np.nan)
+    df["usable_from"] = _next_day(df["date"], trading_days)
+    return df.drop_duplicates(["s33", "date"], keep="last").sort_values(["s33", "date"]).reset_index(drop=True)
+
+
+def normalize_investor_types(rows: list[dict], trading_days) -> pd.DataFrame:
+    """投資部門別売買状況（週次）。列は元のまま、日付と usable_from（公表日の次の営業日）を付ける。"""
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    for c in ("PubDate", "StDate", "EnDate"):
+        df[c] = pd.to_datetime(df[c])
+    df["usable_from"] = _next_day(df["PubDate"], trading_days)
+    return df.drop_duplicates(["Section", "StDate", "PubDate"], keep="last").sort_values(["Section", "StDate"]).reset_index(drop=True)
 
 
 def normalize_fins(rows: list[dict], trading_days) -> pd.DataFrame:

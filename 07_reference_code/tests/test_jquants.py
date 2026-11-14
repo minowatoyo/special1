@@ -460,3 +460,32 @@ def test_auto_oldest_is_ten_years_before_same_month_day():
     assert backfill.auto_oldest(date(2026, 11, 12)) == date(2016, 11, 12)
     assert backfill.auto_oldest(date(2026, 11, 13)) == date(2016, 11, 13)       # W3 の実測と一致
     assert backfill.auto_oldest(date(2036, 2, 29)) == date(2026, 2, 28)         # 10 年前に同日がない場合
+
+
+def test_standard_extra_normalizers_use_next_trading_day_after_publication():
+    days = pd.bdate_range("2026-11-02", "2026-11-30")
+    m = schema.normalize_margin([{"PubDate": "2026-11-09", "Date": "2026-11-06", "Code": "72030", "IssType": "1", "ShrtVol": "10", "LongVol": "100",
+                                  "ShrtNegVol": "5", "LongNegVol": "50", "ShrtStdVol": "5", "LongStdVol": "50", "ShrtVal": "1", "LongVal": "2",
+                                  "ShrtNegVal": "1", "LongNegVal": "1", "ShrtStdVal": "0", "LongStdVal": "1"}] * 2, days)
+    assert len(m) == 1 and m["usable_from"].iloc[0] == pd.Timestamp("2026-11-10") and m["code"].iloc[0] == "72030"      # 重複は 1 行、公表日の翌営業日
+    s = schema.normalize_short_ratio([{"Date": "2026-11-06", "S33": "3700", "SellExShortVa": "800", "ShrtWithResVa": "100", "ShrtNoResVa": "100"}], days)
+    assert abs(s["short_ratio"].iloc[0] - 0.2) < 1e-12 and s["usable_from"].iloc[0] == pd.Timestamp("2026-11-09")
+    i = schema.normalize_investor_types([{"PubDate": "2026-11-12", "StDate": "2026-11-02", "EnDate": "2026-11-06", "Section": "TSEPrime", "FrgnBal": "5"}], days)
+    assert i["usable_from"].iloc[0] == pd.Timestamp("2026-11-13")
+    assert schema.normalize_margin([], days).empty
+
+
+def test_backfill_extra_plan_and_resume(tmp_path):
+    import backfill_extra
+    from datetime import date
+    days = [date(2026, 11, 2), date(2026, 11, 4), date(2026, 11, 5)]
+    jobs = backfill_extra.plan_extra(days, ["3700", "5250"])
+    assert [j[0] for j in jobs].count("/v2/markets/margin-interest") == 3 and [j[0] for j in jobs].count("/v2/markets/short-ratio") == 2 and len(jobs) == 6
+    assert jobs[3][1] == {"s33": "3700", "from": "2026-11-02", "to": "2026-11-05"}
+    c = FakeClient({})
+    st = backfill.run_jobs(c, jobs, tmp_path, sleep=lambda s: None)
+    assert not st["fail"] and len(backfill.load_checkpoint(tmp_path)) == 6
+    assert backfill.run_jobs(FakeClient({}), jobs, tmp_path, sleep=lambda s: None)["ok"] == 0       # 再実行で何も取らない
+    c2 = FakeClient({("/v2/markets/margin-interest", None): [(200, [], 1)]})                         # 公表のない日は 0 行で正常（失敗にしない）
+    st2 = backfill.run_jobs(c2, jobs, tmp_path / "z", sleep=lambda s: None)
+    assert not st2["fail"] and st2["zero_rows_accepted"] == 3
