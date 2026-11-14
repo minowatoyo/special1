@@ -263,3 +263,44 @@ def test_bottom_study_end_to_end_synthetic(tmp_path):
     res = bottom_study.main(root)
     assert res["ledger_chain"]["ok"] and "results" in res["family1_bottom_and_uptrend"] and res["family2_descriptive_levels_discovery"] is not None
     assert (root / "results" / "bottom" / "summary.json").exists()
+
+
+def test_breadth_indicators_flags_and_episode_stats():
+    from selectlib import breadth
+    P, codes = synth_panel(n_dates=800, n_codes=40, seed=31)
+    elig = np.zeros(P.adj_close.shape, bool)
+    elig[300:] = True
+    ind = breadth.indicators(P, elig)
+    assert list(ind.columns) == list(breadth.NAMES) and ind["M2"].iloc[400:].between(0, 1).all() and ind["M1"].iloc[400:].gt(0).all()
+    fl = breadth.extreme_flags(ind)
+    assert not fl.iloc[:250].any().any()                                                    # 最低 250 日の履歴がない間は極端な日にしない
+    # 先読みなし: 未来のデータを壊しても、過去の指標・フラグは同じ
+    cut = 600
+    P2, _ = synth_panel(n_dates=800, n_codes=40, seed=31)
+    P2.adj_close[cut + 1:] *= 0.5
+    P2.volume[cut + 1:] *= 4
+    ind2 = breadth.indicators(P2, elig)
+    assert np.allclose(ind.iloc[: cut + 1].to_numpy(), ind2.iloc[: cut + 1].to_numpy(), equal_nan=True)
+    assert (breadth.extreme_flags(ind2).iloc[: cut + 1].to_numpy() == fl.iloc[: cut + 1].to_numpy()).all()
+    # 点灯が少ない日の検定: 重ならない点灯日だけを拾う
+    d = np.zeros(400)
+    active = np.zeros(400, bool)
+    active[[10, 12, 14, 40, 80, 120, 160, 200, 240]] = True
+    d[active] = 0.01
+    r = breadth.episode_stats(d, active, 21)
+    assert r["days"] == 7 and r["mean"] == 0.01 and np.isnan(r["t"])                        # 分散 0 → t は NaN
+    d[[10, 40, 80, 120, 160, 200, 240]] = [0.02, 0.03, 0.01, 0.02, 0.04, 0.01, 0.03]
+    assert breadth.episode_stats(d, active, 21)["t"] > 3
+
+
+def test_breadth_study_end_to_end_synthetic(tmp_path):
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import breadth_study
+    P, codes = synth_panel(n_dates=1500, n_codes=25, seed=33)
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    res = breadth_study.main(root)
+    assert res["ledger_chain"]["ok"] and len(res["results"]) == 20 and set(res["extreme_days"]) == {"M1", "M2", "M3", "M4", "M5"}
+    assert (root / "results" / "breadth" / "summary.json").exists()

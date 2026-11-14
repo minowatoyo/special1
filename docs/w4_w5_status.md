@@ -50,3 +50,12 @@ python scripts/w5/forward.py summary # 21 営業日以上あけた記録だけ�
 python scripts/w5/bottom_study.py     # 約 10〜20 分。家族 1（6 規則 × h{5, 21}）と家族 2（下げ状態 × 10 特徴）
 ```
 仕様は `docs/w5_protocol.md`。家族 2 の yes / no の水準は、`data/jquants/results/bottom/summary.json` の `family2_descriptive_levels_discovery`。
+
+## 追加（2026-11-14）: 市場の内部指標と、Standard 固有データ
+```
+python scripts/w5/breadth_study.py                       # 市場の内部指標 M1〜M5 の極端な日（20 検定）。約 10 分
+python scripts/jquants/backfill_extra.py                 # 計画（通信なし）
+python scripts/jquants/backfill_extra.py --execute       # 信用残・空売り比率・投資部門別の取得（約 25〜30 分、再開可）
+python scripts/jquants/build_processed.py                # 加工（上の 3 表が processed に入る）
+```
+取得できる Standard 固有データ: 信用取引週末残高（週次・銘柄別、公表日つき）、業種別空売り比率（日次・33 業種）、投資部門別売買状況（週次）。売買内訳データは Premium 限定で不可。モデルの入力にするのは、事前固定した除去実験を通してから。

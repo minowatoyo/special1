@@ -160,6 +160,7 @@ def run_pass(P, elig: np.ndarray, builders: dict, fins: pd.DataFrame, horizons=H
             ctx.f = stock_feats(v).reindex(P.dates)
             ctx.u3 = extras["u3"][:, j] if extras and "u3" in extras else np.zeros(n_t, dtype=bool)
             ctx.mkt_down = extras["mkt_down"] if extras and "mkt_down" in extras else np.zeros(n_t, dtype=bool)
+            ctx.mkt_ext = extras.get("mkt_ext", {}) if extras else {}
         valid = ok[:, j]
         for r, nm in enumerate(names):
             s = np.asarray(builders[nm](ctx), dtype=bool) & valid
@@ -247,7 +248,7 @@ def confirm(acc: dict, passed: list) -> dict:
     return {k: tab[k] for k in passed if k in tab}
 
 
-def diff_table(acc: dict, which: str, pairs: list) -> dict:
+def diff_table(acc: dict, which: str, pairs: list, stat_fn=None) -> dict:
     """2 つの規則（例: X&earn_no と X&earn_yes）の、日ごとの超過の差の検定。pairs: [(ラベル, 規則 a, 規則 b)]。差 = a の超過 − b の超過。"""
     out = {}
     names = acc["names"]
@@ -259,7 +260,7 @@ def diff_table(acc: dict, which: str, pairs: list) -> dict:
             with np.errstate(divide="ignore", invalid="ignore"):
                 sp = (acc["sum"][hi, ia] / ca) - (acc["sum"][hi, ib] / cb)
             active = pm & (ca >= MIN_SIGNALS) & (cb >= MIN_SIGNALS)
-            s = spread_stats(np.nan_to_num(sp), active, h)
+            s = (stat_fn or spread_stats)(np.nan_to_num(sp), active, h)
             s["signals_per_day"] = float(min(ca[active].mean(), cb[active].mean())) if active.any() else float("nan")
             s["net_of_round_trip_cost"] = float("nan")
             s["mean_by_liquidity_tertile(low,mid,high)"] = [float("nan")] * 3
