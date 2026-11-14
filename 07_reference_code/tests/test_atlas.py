@@ -83,7 +83,7 @@ def test_build_obs_and_study_end_to_end_without_lookahead(tmp_path):
     res = pattern_atlas.main(a, min_obs=200, min_periods=10)
     assert res["combinations_tested"] > 100 and res["observations"]["discovery"] > 3000 and res["observations"]["confirmation"] > 1000
     assert len(res["long_patterns"]) <= pattern_atlas.TOP_LONG and res["ledger_chain"]["ok"]
-    assert (a / "results" / "atlas" / "summary.json").exists()
+    assert (a / "results" / "atlas_v2" / "summary.json").exists()
     # 先読みなし: 確認期間のデータを壊しても、発見期間の結果（報告する組み合わせと平均）は変わらない
     cut = int(np.searchsorted(P.dates.values, rules.SPLIT.to_datetime64())) + 5
     for arr in (P.adj_open, P.adj_high, P.adj_low, P.adj_close, P.raw_open, P.raw_close):
@@ -93,3 +93,20 @@ def test_build_obs_and_study_end_to_end_without_lookahead(tmp_path):
     res2 = pattern_atlas.main(b, min_obs=200, min_periods=10)
     key = lambda r: [(x["pattern"], x["mean_excess_21d"], x["obs"]) for x in r["long_patterns"] + r["avoid_patterns"]]  # noqa: E731
     assert key(res) == key(res2) and json.dumps(res["observations"]) == json.dumps(res2["observations"])
+
+
+def test_market_classes_span_the_2022_reorganization_and_dedupe_drops_overlaps():
+    # 旧区分と新区分が、同じ区分に入る
+    assert atlas.MARKET_CODE["0101"] == atlas.MARKET_CODE["0111"] == 0 and atlas.MARKET_CODE["0102"] == atlas.MARKET_CODE["0112"] == atlas.MARKET_CODE["0106"] == 1
+    assert atlas.MARKET_CODE["0104"] == atlas.MARKET_CODE["0113"] == atlas.MARKET_CODE["0107"] == 2 and len(atlas.LABELS["market"]) == 4
+    # 観測が重なる候補は、t 値の高い 1 つだけ残る（修正なし ≈ 全観測 のような条件）
+    obs = fake_obs(seed=3, n_periods=60, per=400)
+    obs["revision"] = np.where(np.arange(len(obs["y"])) % 200 == 0, 0, 2).astype(np.int8)       # ほぼ全員が「修正なし」
+    obs["y"] = obs["y"] + np.where(obs["price"] == 0, 0.01, 0.0)
+    mask = np.ones(len(obs["y"]), bool)
+    res = atlas.mine(obs, mask, features=["price", "revision", "vol"], max_order=2, min_obs=300)
+    pos = sorted([r for r in res if r["mean"] > 0], key=lambda r: -r["t"])
+    kept = atlas.dedupe(obs, mask, pos, 10)
+    desc = [atlas.describe(obs, r) for r in kept]
+    assert "株価<300円" in desc[0] and not ("株価<300円 ＆ 修正なし" in desc)                 # 「修正なし」を足しただけの重複は落ちる
+    assert len(kept) < len(pos)

@@ -35,10 +35,10 @@ LABELS = {
     "roe": ["ROE低", "ROE中", "ROE高", f"ROE{MISSING}"],
     "margin": ["信用買い残が軽い", "買い残が中程度", "買い残が重い", f"信用残{MISSING}"],
     "trend": ["75日線の上", "75日線の下"],
-    "market": ["旧東証一部", "旧東証二部", "旧マザーズ", "旧JASDAQ", "プライム", "スタンダード", "グロース", "その他"],
+    "market": ["主力市場(旧東証一部・プライム)", "中位市場(旧東証二部・スタンダード・旧JASDAQ S)", "新興市場(旧マザーズ・グロース・旧JASDAQ G)", "その他の市場"],
     "month": [f"{m}月" for m in range(1, 13)],
 }
-MARKET_CODE = {"0101": 0, "0102": 1, "0104": 2, "0106": 3, "0107": 3, "0111": 4, "0112": 5, "0113": 6}
+MARKET_CODE = {"0101": 0, "0111": 0, "0102": 1, "0112": 1, "0106": 1, "0104": 2, "0113": 2, "0107": 2}   # v2: 新旧をまたぐ 3 区分。それ以外は 3
 SECTOR_LABEL = "業種"
 
 
@@ -115,7 +115,7 @@ def build_obs(P, elig: np.ndarray, iv: pd.DataFrame, fins: pd.DataFrame, mg: pd.
         cols["margin"].append(_tertile(marg[i], m, True)[j] if marg is not None else np.full(len(j), 3, np.int8))
         cols["trend"].append(np.where(P.adj_close[T][j] > sma75[i][j], 0, 1).astype(np.int8))
         cols["sector"].append(np.array([sec_codes.get(s17[i][jj], -1) for jj in j], dtype=np.int8))
-        cols["market"].append(np.array([MARKET_CODE.get(mkt[i][jj], 7) for jj in j], dtype=np.int8))
+        cols["market"].append(np.array([MARKET_CODE.get(mkt[i][jj], 3) for jj in j], dtype=np.int8))
         cols["month"].append(np.full(len(j), P.dates[T + 1].month - 1, dtype=np.int8))
         y_all.append(y[j])
         per.append(np.full(len(j), len(tt)))
@@ -244,3 +244,29 @@ def evaluate(obs: dict, mask: np.ndarray, sub: tuple, key: int, dims: list) -> d
     out["same_sign_years"] = int(len(ym))              # 呼び出し側で、発見期間の符号と比べる
     out["year_means"] = {int(k): round(float(v), 4) for k, v in ym.items()}
     return out
+
+
+def pattern_mask(obs: dict, base: np.ndarray, dims: list, key: int) -> np.ndarray:
+    sel = base.copy()
+    for f, mult, size in dims:
+        sel &= obs[f] == (key // mult) % size
+    return sel
+
+
+def dedupe(obs: dict, base: np.ndarray, ordered: list, keep: int, overlap: float = 0.9, scan: int = 600) -> list:
+    """t 値の順に並べた候補から、すでに選んだ候補と観測の重なり（共通 ÷ 和集合）が overlap 以上のものを飛ばして、keep 個を選ぶ。"""
+    chosen, masks = [], []
+    for r in ordered[:scan]:
+        m = pattern_mask(obs, base, r["dims"], r["key"])
+        dup = False
+        for k in masks:
+            inter = np.count_nonzero(m & k)
+            if inter and inter / (np.count_nonzero(m) + np.count_nonzero(k) - inter) >= overlap:
+                dup = True
+                break
+        if not dup:
+            chosen.append(r)
+            masks.append(m)
+            if len(chosen) >= keep:
+                break
+    return chosen

@@ -97,3 +97,9 @@ python scripts/w5/forward_s2.py score      # 権利付き最終日を過ぎた�
 python scripts/w5/forward_s2.py summary    # 12 か月以上たまるまで、結論を出さない
 ```
 台帳: `data/jquants/ledger/forward_s2.jsonl`（追記専用のハッシュ連鎖）。仕様は変えない（40 営業日前の始値で買い、権利付き最終日の始値で売り、予想配当利回りの上位 1/5）。
+
+## 追加（2026-11-14）: パターン図鑑 v2
+```
+python scripts/w5/pattern_atlas.py    # v2: 市場区分を新旧をまたぐ 3 区分に、観測が 9 割以上重なる候補を除去。結果は results/atlas_v2/
+```
+確認期間は v1 で 1 度読んでいるので、v2 の確認は 2 度目の読み（v1 とは独立な証拠にならない）。

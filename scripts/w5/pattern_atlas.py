@@ -31,10 +31,13 @@ def _r(x, n=4):
     return round(float(x), n) if x is not None and np.isfinite(x) else None
 
 
-def pick(res: list) -> tuple:
-    pos = sorted([r for r in res if r["mean"] > 0], key=lambda r: -r["t"])[:TOP_LONG]
-    neg = sorted([r for r in res if r["mean"] < 0], key=lambda r: r["t"])[:TOP_AVOID]
-    return pos, neg
+def pick(res: list, obs: dict | None = None, base: np.ndarray | None = None) -> tuple:
+    """買い側・避ける側の上位（v2: 観測が 9 割以上重なる候補は、t 値の高い 1 つだけ残す）。"""
+    pos = sorted([r for r in res if r["mean"] > 0], key=lambda r: -r["t"])
+    neg = sorted([r for r in res if r["mean"] < 0], key=lambda r: r["t"])
+    if obs is None:
+        return pos[:TOP_LONG], neg[:TOP_AVOID]
+    return atlas.dedupe(obs, base, pos, TOP_LONG), atlas.dedupe(obs, base, neg, TOP_AVOID)
 
 
 def main(root: Path, write=True, min_obs: int = atlas.MIN_OBS, min_periods: int = atlas.MIN_PERIODS) -> dict:
@@ -54,15 +57,15 @@ def main(root: Path, write=True, min_obs: int = atlas.MIN_OBS, min_periods: int 
     qv = st.bh_fdr(np.array([r["p"] for r in res])) if res else np.array([])
     for r, q in zip(res, qv):
         r["q"] = float(q)
-    pos, neg = pick(res)
+    pos, neg = pick(res, obs, dmask)
     ledger = AppendOnlyLedger(root / "ledger" / "trials.jsonl")
     sha = rs.manifest_sha(root)
     chosen = pos + neg
     conf = [atlas.evaluate(obs, cmask, r["sub"], r["key"], r["dims"]) for r in chosen]
     if chosen:
-        fam = f"atlas|{sha[:16]}"
+        fam = f"atlas_v2|{sha[:16]}"
         again = any(x["type"] == "confirmation_read" and x["payload"]["family"] == fam for x in ledger._rows())
-        ledger.append_event("confirmation_read", {"family": fam, "rules": len(chosen), "tested_combinations": n_tested, "re_read": again})
+        ledger.append_event("confirmation_read", {"family": fam, "rules": len(chosen), "tested_combinations": n_tested, "re_read": True, "version": "v2", "note": "v1 で確認期間を 1 度読んでいる。v2 は 2 度目の読み"})
     cp = np.array([c["p"] for c in conf], dtype=float)
     cq = st.bh_fdr(cp) if len(cp) else np.array([])
 
@@ -81,10 +84,10 @@ def main(root: Path, write=True, min_obs: int = atlas.MIN_OBS, min_periods: int 
     out = {"observations": {"discovery": int(dmask.sum()), "confirmation": int(cmask.sum()), "discovery_periods": int(len(np.unique(obs["period"][dmask]))),
                             "confirmation_periods": int(len(np.unique(obs["period"][cmask])))},
            "combinations_tested": n_tested, "bh_q_below_0.10_in_discovery": int((qv < 0.10).sum()) if n_tested else 0,
-           "long_patterns": rows[:len(pos)], "avoid_patterns": rows[len(pos):], "replicated_count": sum(x["replicated"] for x in rows),
+           "version": "v2（市場区分を新旧をまたぐ 3 区分に。観測が 9 割以上重なる候補を除去。確認期間は 2 度目の読み）", "long_patterns": rows[:len(pos)], "avoid_patterns": rows[len(pos):], "replicated_count": sum(x["replicated"] for x in rows),
            "ledger_chain": ledger.verify(), "data_manifest_sha256": sha}
     if write:
-        d = root / "results" / "atlas"
+        d = root / "results" / "atlas_v2"
         d.mkdir(parents=True, exist_ok=True)
         (d / "summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
     return out
