@@ -55,15 +55,15 @@ class Panel:
         """売買代金の 60 営業日平均（売買なしの日は 0）[日付, 銘柄]。"""
         return pd.DataFrame(self.turnover).fillna(0.0).rolling(schema.VA_WINDOW, min_periods=schema.VA_WINDOW).mean().to_numpy()
 
-    def eligible_daily(self, intervals: pd.DataFrame, markets, min_history: int = MIN_HISTORY, chunk: int = 200) -> np.ndarray:
+    def eligible_daily(self, intervals: pd.DataFrame, markets, min_history: int = MIN_HISTORY, chunk: int = 200, va_min: float | None = None) -> np.ndarray:
         """全営業日の対象銘柄のマスク [日付, 銘柄]（eligible をまとめて、日付を分けて計算）。"""
         out = np.zeros((len(self.dates), len(self.codes)), dtype=bool)
         for a in range(0, len(self.dates), chunk):
             idx = list(range(a, min(a + chunk, len(self.dates))))
-            out[idx] = self.eligible(intervals, markets, idx, min_history=min_history)
+            out[idx] = self.eligible(intervals, markets, idx, min_history=min_history, va_min=va_min)
         return out
 
-    def eligible(self, intervals: pd.DataFrame, markets, t_idx: list, min_history: int = MIN_HISTORY) -> np.ndarray:
+    def eligible(self, intervals: pd.DataFrame, markets, t_idx: list, min_history: int = MIN_HISTORY, va_min: float | None = None) -> np.ndarray:
         """リバランス日ごとの対象銘柄のマスク [len(t_idx), 銘柄]。schema.universe と同じ条件（内国普通株・市場区分・
         売買代金 60 営業日平均 ≥ 5 億円・履歴）。市場区分と普通株の判定は別々に適用する。"""
         to = pd.DataFrame(self.turnover).fillna(0.0)
@@ -82,7 +82,7 @@ class Panel:
         mask = np.zeros((len(t_idx), len(self.codes)), dtype=bool)
         ti, col = j["ti"].to_numpy(), j["col"].to_numpy()
         T = np.array(t_idx)[ti]
-        good = listed & (va60[T, col] >= schema.VA_MIN) & (hist[T, col] >= max(min_history, schema.VA_WINDOW))
+        good = listed & (va60[T, col] >= (schema.VA_MIN if va_min is None else va_min)) & (hist[T, col] >= max(min_history, schema.VA_WINDOW))
         mask[ti[good], col[good]] = True
         return mask
 
