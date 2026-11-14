@@ -414,3 +414,28 @@ def test_margin_study_end_to_end_synthetic(tmp_path):
     res = margin_study.main(root)
     assert res["ledger_chain"]["ok"] and len(res["results"]) == 10 and set(res["coverage"]) == set(__import__("selectlib.margin", fromlist=["NAMES"]).NAMES)
     assert (root / "results" / "margin" / "summary.json").exists()
+
+
+def test_explore_map_runs_and_never_touches_confirmation_period(tmp_path):
+    """探索マップは発見期間だけを使う。境界（2022-04-04）以降のデータを壊しても、出力は変わらない。"""
+    import json as _json
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import explore_map
+    P, codes = synth_panel(n_dates=1500, n_codes=70, seed=51)
+    a, b_ = tmp_path / "a", tmp_path / "b"
+    _write_processed(a, P, codes)
+    cut = int(np.searchsorted(P.dates.values, rules.SPLIT.to_datetime64()))
+    assert 600 < cut < 1400
+    for arr in (P.adj_open, P.adj_high, P.adj_low, P.adj_close, P.raw_open, P.raw_close):
+        arr[cut:] *= 1.7
+    P.turnover[cut:] *= 0.1
+    P.topix = P.topix.astype(float)
+    P.topix.iloc[cut:] = P.topix.iloc[cut:] * 0.6
+    _write_processed(b_, P, codes)
+    ra, rb = explore_map.main(a), explore_map.main(b_)
+    assert _json.dumps(ra, sort_keys=True, default=float) == _json.dumps(rb, sort_keys=True, default=float)
+    assert set(ra) >= {"ic_by_horizon", "quintiles", "earnings_reaction", "overnight_intraday", "calendar", "sector_momentum"}
+    assert ra["ic_by_horizon"]["ret5"][21]["n"] >= 8 and ra["rebalance_dates_used"] > 5
+    assert set(ra["calendar"]["weekday"]) == {"Mon", "Tue", "Wed", "Thu", "Fri"}

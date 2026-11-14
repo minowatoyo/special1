@@ -65,3 +65,9 @@ python scripts/jquants/build_processed.py                # 加工（上の 3 表
 python scripts/w5/margin_study.py     # 約 10〜15 分（要: backfill_extra.py と build_processed.py の完了）
 ```
 仕様は `docs/w5_protocol.md`。出力に、目印ごとのデータのある割合（coverage）と、yes / no の水準（記述）も出る。
+
+## 追加（2026-11-14）: 探索マップ（記述。発見期間のみ）
+```
+python scripts/w5/explore_map.py      # 約 10〜15 分。検定ではなく、8 つの見方の集計（保有期間別の IC、買い側と売り側、流動性・買える銘柄、決算発表日の値動き、夜間と日中、暦、業種）
+```
+確認期間（2022-04-04 以降）のデータには触れない（境界以降のデータを壊しても出力が変わらないことをテストで確認）。試行台帳には書かない。

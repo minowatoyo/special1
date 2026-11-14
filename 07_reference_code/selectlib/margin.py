@@ -87,3 +87,20 @@ def sector_flags(P, sr: pd.DataFrame, intervals: pd.DataFrame) -> dict:
 
 def all_flags(P, margin: pd.DataFrame, short_ratio: pd.DataFrame, intervals: pd.DataFrame) -> dict:
     return {**margin_flags(P, margin), **sector_flags(P, short_ratio, intervals)}
+
+
+def margin_values(P, m: pd.DataFrame) -> dict:
+    """買い残・売り残の株数 [日付, 銘柄]（各日、利用可能日 ≤ 当日の最新の週次記録。10 暦日より古い記録は NaN）。"""
+    ci = {c: i for i, c in enumerate(P.codes)}
+    n_t, n_j = P.adj_close.shape
+    out = {"long_vol": np.full((n_t, n_j), np.nan), "short_vol": np.full((n_t, n_j), np.nan)}
+    m = m.dropna(subset=["usable_from"]).sort_values(["code", "usable_from"])
+    for code, d in m.groupby("code", sort=False):
+        j = ci.get(code)
+        if j is None:
+            continue
+        u = d["usable_from"].to_numpy()
+        for k in out:
+            v, ok = _daily(P, u, d[k].to_numpy(dtype=float))
+            out[k][:, j] = np.where(ok, v, np.nan)
+    return out
