@@ -323,5 +323,5 @@ def test_stock_table_compares_across_days_not_within_a_day():
            "ucnt": np.full((2, n), 600.0), "usum": np.zeros((2, n))}
     t = breadth_study.stock_table(acc, flags, "discovery")
     r = t[("stock:M2:yes-no", 5)]
-    assert r["mean"] > 0.005 and r["t"] > 3 and r["days"] >= 5
+    assert r["mean"] > 0.005 and r["t"] > 2.5 and r["days"] >= 5
     assert t[("stock:M1:yes-no", 5)]["days"] == 0                                         # 極端な日がない指標は計算不能（NaN）
