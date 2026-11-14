@@ -181,3 +181,37 @@ def test_forward_record_score_summary_and_no_lookahead(tmp_path):
     assert all(o["payload"]["n_scored"] > 20 and o["payload"]["top15_mean_excess"] is not None for o in out)
     sm = forward.summary(short)["models"]
     assert sm["SEL-C1"]["independent_periods"] == 1 and sm["SEL-C1"]["primary"] is True
+
+
+def test_diff_table_detects_planted_difference_and_study_defines_24_tests():
+    dates = pd.bdate_range("2017-01-02", "2026-11-12")
+    n, rng = len(dates), np.random.default_rng(3)
+    H = 2
+    names = ["x&earn_no", "x&earn_yes"]
+    acc = {"names": names, "horizons": [5, 21], "dates": dates, "cnt": np.full((H, 2, n), 30.0), "sum": np.zeros((H, 2, n)),
+           "cnt3": np.full((H, 3, 2, n), 10.0), "sum3": np.zeros((H, 3, 2, n)), "ucnt": np.full((H, n), 600.0), "usum": np.zeros((H, n)),
+           "ucnt3": np.full((H, 3, n), 200.0), "usum3": np.zeros((H, 3, n))}
+    for hi in range(H):
+        acc["sum"][hi] = rng.normal(0, 0.03, (2, n)) * 30
+        acc["sum"][hi, 0] += 0.008 * 30                                   # earn_no だけ反発
+    d = rules.diff_table(acc, "discovery", [("x:earn_no-earn_yes", "x&earn_no", "x&earn_yes")])
+    assert d[("x:earn_no-earn_yes", 5)]["t"] > 3 and d[("x:earn_no-earn_yes", 5)]["mean"] > 0.006
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import earnings_study
+    assert len(earnings_study.builders()) == 8 and len(earnings_study.pairs()) == 4
+    assert len(earnings_study.builders()) * 2 + len(earnings_study.pairs()) * 2 == 24          # 16 の水準 + 8 の差
+
+
+def test_earnings_study_end_to_end_synthetic(tmp_path):
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import earnings_study
+    P, codes = synth_panel(n_dates=1500, n_codes=25, seed=12)
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    res = earnings_study.main(root)
+    assert res["exploratory"] and res["ledger_chain"]["ok"] and res["n_tests"] >= 0
+    assert (root / "results" / "earnings" / "summary.json").exists()

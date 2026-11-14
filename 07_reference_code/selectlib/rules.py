@@ -240,3 +240,23 @@ def confirm(acc: dict, passed: list) -> dict:
     """確認期間（発見期間の通過規則だけを読む）。同じ符号かつ両側 p < 0.05 を「確認」とする。"""
     tab = rule_table(acc, "confirmation", names={k[0] for k in passed})
     return {k: tab[k] for k in passed if k in tab}
+
+
+def diff_table(acc: dict, which: str, pairs: list) -> dict:
+    """2 つの規則（例: X&earn_no と X&earn_yes）の、日ごとの超過の差の検定。pairs: [(ラベル, 規則 a, 規則 b)]。差 = a の超過 − b の超過。"""
+    out = {}
+    names = acc["names"]
+    for hi, h in enumerate(acc["horizons"]):
+        pm = period_mask(acc["dates"], h, which)
+        for label, a, b in pairs:
+            ia, ib = names.index(a), names.index(b)
+            ca, cb = acc["cnt"][hi, ia], acc["cnt"][hi, ib]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                sp = (acc["sum"][hi, ia] / ca) - (acc["sum"][hi, ib] / cb)
+            active = pm & (ca >= MIN_SIGNALS) & (cb >= MIN_SIGNALS)
+            s = spread_stats(np.nan_to_num(sp), active, h)
+            s["signals_per_day"] = float(min(ca[active].mean(), cb[active].mean())) if active.any() else float("nan")
+            s["net_of_round_trip_cost"] = float("nan")
+            s["mean_by_liquidity_tertile(low,mid,high)"] = [float("nan")] * 3
+            out[(label, h)] = s
+    return out
