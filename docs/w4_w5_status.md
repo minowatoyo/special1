@@ -103,3 +103,9 @@ python scripts/w5/forward_s2.py summary    # 12 か月以上たまるまで、�
 python scripts/w5/pattern_atlas.py    # v2: 市場区分を新旧をまたぐ 3 区分に、観測が 9 割以上重なる候補を除去。結果は results/atlas_v2/
 ```
 確認期間は v1 で 1 度読んでいるので、v2 の確認は 2 度目の読み（v1 とは独立な証拠にならない）。
+
+## 追加（2026-11-14）: 除外フィルターの検証
+```
+python scripts/w5/exclusion_study.py   # 約 5〜10 分。信用残の「避ける状態」（X1〜X4）が効くか（検証 A）、順位予測の上位 15 から除くと良くなるか（検証 B）。結果は results/exclusion/
+```
+仕様は docs/w5_protocol.md「除外フィルターの検証」（事前固定）。主たる族は X1・X2・U12（定義が発見期間だけから決まったもの）。X3・X4・U1234 は、パターン図鑑で確認期間を見た後に選んだ由来なので、記述のみ（判定に使わない）。確認期間は 1 度だけ読み、台帳に記録する。事前に、信用残（`processed/margin_interest.parquet`）が必要。
