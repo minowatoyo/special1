@@ -215,3 +215,51 @@ def test_earnings_study_end_to_end_synthetic(tmp_path):
     res = earnings_study.main(root)
     assert res["exploratory"] and res["ledger_chain"]["ok"] and res["n_tests"] >= 0
     assert (root / "results" / "earnings" / "summary.json").exists()
+
+
+def _ctx(df, regime=None):
+    from types import SimpleNamespace
+    f = rules.stock_feats(df)
+    n = len(df)
+    return SimpleNamespace(f=f, regime=np.ones(n, bool) if regime is None else regime, u3=np.ones(n, bool), mkt_down=np.zeros(n, bool))
+
+
+def test_bottom_and_drop_builders_have_no_lookahead_and_right_counts():
+    df = synth.make_garch_ohlcv(n=1500, seed=5)
+    b = {**rules.bottom_up_builders(), **rules.drop_builders()}
+    assert len(rules.bottom_up_builders()) == 6 and len(rules.drop_builders()) == 1 + 2 * len(rules.DROP_DESCRIPTORS)
+    cut = 1000
+    d2 = df.copy()
+    d2.iloc[cut + 1:] = d2.iloc[cut + 1:].to_numpy() * 2.9
+    c1, c2 = _ctx(df), _ctx(d2)
+    for name, fn in b.items():
+        assert (fn(c1)[: cut + 1] == fn(c2)[: cut + 1]).all(), name
+
+
+def test_bottom_rule_definitions_on_hand_made_series():
+    n = 400
+    idx = pd.bdate_range("2020-01-01", periods=n)
+    k = np.arange(100)
+    seg = 100 + np.where(k % 2 == 1, 0.5, -0.5 + 0.01 * k)                              # 底で、安値を切り上げながら上下する
+    c = np.r_[np.full(190, 200.0), np.linspace(200, 100, 60), seg, np.linspace(100, 130, 50)]   # 横ばい → 急落 → 底 → 反発
+    v = pd.DataFrame({"open": c, "high": c * 1.01, "low": c * 0.99, "close": c, "volume": 1e6}, index=idx)
+    x = _ctx(v)
+    b1 = rules.bottom_up_builders()["B1_higher_low_cross"](x)
+    assert b1.any() and (np.flatnonzero(b1) > 260).all()                          # 点灯は、新安値のない 10 営業日がたった後（底の後）
+    d = rules.drop_builders()
+    assert d["drop"](x)[:20].sum() == 0 and d["drop"](x)[200:250].any()           # 下げ状態は下落の途中
+    yes, no = d["drop&D4_deep_yes"](x), d["drop&D4_deep_no"](x)
+    assert not (yes & no).any() and ((yes | no) == d["drop"](x)).all()            # yes と no は排他で、足すと下げ状態に一致
+
+
+def test_bottom_study_end_to_end_synthetic(tmp_path):
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import bottom_study
+    P, codes = synth_panel(n_dates=1500, n_codes=25, seed=21)
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    res = bottom_study.main(root)
+    assert res["ledger_chain"]["ok"] and "results" in res["family1_bottom_and_uptrend"] and res["family2_descriptive_levels_discovery"] is not None
+    assert (root / "results" / "bottom" / "summary.json").exists()

@@ -124,7 +124,8 @@ def regime_up(P) -> np.ndarray:
     return (c > c.rolling(200, min_periods=200).mean()).fillna(False).to_numpy()
 
 
-def run_pass(P, elig: np.ndarray, builders: dict, fins: pd.DataFrame, horizons=HORIZONS, progress=None) -> dict:
+def run_pass(P, elig: np.ndarray, builders: dict, fins: pd.DataFrame, horizons=HORIZONS, progress=None, extras: dict | None = None,
+             feats: bool = False) -> dict:
     n_t, n_j = P.adj_close.shape
     names = list(builders)
     R, H = len(names), len(horizons)
@@ -154,7 +155,11 @@ def run_pass(P, elig: np.ndarray, builders: dict, fins: pd.DataFrame, horizons=H
             continue
         sig = rule_signals(v).reindex(P.dates, fill_value=False)
         vs = volume_surge(v).reindex(P.dates, fill_value=False)
-        ctx = SimpleNamespace(sig=sig, vol_surge=vs, earn5=earn[:, j], regime=reg)
+        ctx = SimpleNamespace(sig=sig, vol_surge=vs, earn5=earn[:, j], regime=reg, v=v, dates=P.dates)
+        if feats:
+            ctx.f = stock_feats(v).reindex(P.dates)
+            ctx.u3 = extras["u3"][:, j] if extras and "u3" in extras else np.zeros(n_t, dtype=bool)
+            ctx.mkt_down = extras["mkt_down"] if extras and "mkt_down" in extras else np.zeros(n_t, dtype=bool)
         valid = ok[:, j]
         for r, nm in enumerate(names):
             s = np.asarray(builders[nm](ctx), dtype=bool) & valid
@@ -260,3 +265,121 @@ def diff_table(acc: dict, which: str, pairs: list) -> dict:
             s["mean_by_liquidity_tertile(low,mid,high)"] = [float("nan")] * 3
             out[(label, h)] = s
     return out
+
+
+# ---------------------------------------------------------------- 底打ち・上昇しやすい局面・下がり方の特徴
+def stock_feats(v: pd.DataFrame) -> pd.DataFrame:
+    """1 銘柄の指標（日 t の引け後までの情報だけ）。v は欠損のない日足（open/high/low/close/volume）。"""
+    o, h, l, c, vol = v["open"], v["high"], v["low"], v["close"], v["volume"]
+    vv = vol.where(vol > 0)
+    lr = np.log(c).diff()
+    gk = (np.log(o / c.shift(1)) ** 2 + 0.5 * np.log(h / l) ** 2 - (2 * np.log(2) - 1) * np.log(c / o) ** 2)
+    vc = np.sqrt(gk.rolling(5, min_periods=4).mean() / gk.rolling(22, min_periods=18).mean().replace(0, np.nan))
+    f = pd.DataFrame(index=v.index)
+    f["c"], f["vol"] = c, vol
+    f["sma25"], f["sma75"] = ind.sma(c, 25), ind.sma(c, 75)
+    f["ret5"], f["ret20"] = c / c.shift(5) - 1, c / c.shift(20) - 1
+    f["max252"], f["min252"] = c.rolling(252).max(), c.rolling(252).min()
+    f["low60"] = l.rolling(60).min()
+    f["newlow60"] = (c <= c.shift(1).rolling(60).min()).astype(float)
+    f["rsi"] = ind.rsi(c, 14)
+    f["vol_ratio"] = vv / ind.sma(vv, 20).shift(1)
+    f["hammer"] = cn.hammer_shape(o, h, l, c).astype(float)
+    f["gap"] = o / c.shift(1) - 1
+    f["vol5"], f["vol20"] = vol.rolling(5).mean(), vol.rolling(20).mean()
+    f["vol60"] = lr.rolling(60).std()
+    f["vol60_med252"] = f["vol60"].rolling(252).median()
+    f["vc"] = vc
+    f["vc_p10"] = vc.rolling(252, min_periods=200).quantile(0.10)
+    f["donchian_up"] = (c > h.rolling(20).max().shift(1)).astype(float)
+    f["newhigh252"] = (c >= f["max252"]).astype(float)
+    return f
+
+
+def _b(x) -> np.ndarray:
+    return np.asarray(pd.Series(x).fillna(False).astype(bool))
+
+
+def bottom_up_builders() -> dict:
+    """家族 1（6 規則）。docs/w5_protocol.md の定義どおり。"""
+    def b1(x):
+        f = x.f
+        return _b((f.c <= 0.70 * f.max252) & (f.newlow60.rolling(10, min_periods=1).sum() == 0) & (f.c > f.sma25) & (f.c.shift(1) <= f.sma25.shift(1)))
+
+    def b2(x):
+        f = x.f
+        ev = ((f.ret20 <= -0.15) & (f.vol_ratio > 3) & (f.hammer > 0)).fillna(False)
+        return _b(ev.shift(5, fill_value=False) & (f.newlow60.rolling(5, min_periods=1).sum() == 0))
+
+    def b3(x):
+        f = x.f
+        return _b((f.c / f.low60 - 1 >= 0.10) & (f.rsi > 50) & (f.rsi.shift(1) <= 50) & (f.rsi.rolling(10).min() < 40))
+
+    def u1(x):
+        f = x.f
+        s = (f.newhigh252 > 0).fillna(False).shift(5, fill_value=False)
+        shallow = f.c.rolling(5).min() / f.c.shift(5) - 1 >= -0.03
+        quiet = f.vol.rolling(5).mean() < f.vol.rolling(20).mean().shift(5)
+        return _b(s & shallow & quiet & (f.c > f.sma25))
+
+    def u2(x):
+        f = x.f
+        return _b((f.vc <= f.vc_p10) & (f.donchian_up > 0) & pd.Series(x.regime, index=f.index))
+
+    def u3(x):
+        f = x.f
+        return _b(pd.Series(x.u3, index=f.index) & (f.c > f.sma75))
+
+    return {"B1_higher_low_cross": b1, "B2_capitulation_hold": b2, "B3_bounce_rsi": b3, "U1_shallow_pullback": u1, "U2_squeeze_breakout": u2,
+            "U3_value_revision_trend": u3}
+
+
+DROP_DESCRIPTORS = ("D1_capitulation_volume", "D2_fast_drop", "D3_gap_down", "D4_deep", "D5_near_52w_low", "D6_market_wide", "D7_volume_dryup",
+                    "D8_vol_expansion", "D9_low_price", "D10_prior_uptrend")
+
+
+def drop_builders() -> dict:
+    """家族 2: 下げ状態（20 営業日リターン ≤ −15%）と、10 特徴の yes / no。"""
+    def base(x):
+        return (x.f.ret20 <= -0.15).fillna(False)
+
+    def desc(x) -> dict:
+        f = x.f
+        return {"D1_capitulation_volume": (f.vol_ratio > 3).rolling(10, min_periods=1).max() > 0,
+                "D2_fast_drop": f.ret5 <= -0.10,
+                "D3_gap_down": (f.gap <= -0.03).rolling(5, min_periods=1).max() > 0,
+                "D4_deep": f.ret20 <= -0.25,
+                "D5_near_52w_low": f.c <= 1.05 * f.min252,
+                "D6_market_wide": pd.Series(x.mkt_down, index=f.index),
+                "D7_volume_dryup": f.vol5 < 0.5 * f.vol20,
+                "D8_vol_expansion": f.vol60 > f.vol60_med252,
+                "D9_low_price": f.c < 500,
+                "D10_prior_uptrend": f.c.shift(20) > f.sma75.shift(20)}
+
+    out = {"drop": lambda x: _b(base(x))}
+    for d in DROP_DESCRIPTORS:
+        out[f"drop&{d}_yes"] = lambda x, d=d: _b(base(x) & desc(x)[d].fillna(False))
+        out[f"drop&{d}_no"] = lambda x, d=d: _b(base(x) & ~desc(x)[d].fillna(False))
+    return out
+
+
+def u3_matrix(P, fins: pd.DataFrame, elig: np.ndarray, chunk: int = 150) -> np.ndarray:
+    """U3 の横断面の条件 [日付, 銘柄]: 予想益利回りが、その日の対象銘柄の上位 20%、かつ 純利益予想の上方修正（rev_np > 0）。"""
+    from selectlib import features as feat
+    out = np.zeros(elig.shape, dtype=bool)
+    for a in range(0, len(P.dates), chunk):
+        idx = list(range(a, min(a + chunk, len(P.dates))))
+        raw = feat.fins_features(P, fins, idx)
+        ey, rv = raw["earn_yield"], raw["rev_np"]
+        for r, t in enumerate(idx):
+            m = elig[t] & np.isfinite(ey[r])
+            if m.sum() < 20:
+                continue
+            thr = np.percentile(ey[r][m], 80)
+            out[t] = m & (ey[r] >= thr) & (np.nan_to_num(rv[r], nan=0.0) > 0)
+    return out
+
+
+def mkt_down(P, days: int = 20, thr: float = -0.05) -> np.ndarray:
+    c = P.topix["close"]
+    return (c / c.shift(days) - 1 <= thr).fillna(False).to_numpy()

@@ -44,3 +44,9 @@ python scripts/w5/forward.py summary # 21 営業日以上あけた記録だけ�
 - 確認期間（2022-04 以降）は、発見期間の通過規則だけを 1 度読み、読んだ記録を台帳（`confirmation_read`）に残す。
 - 前向きの記録は、データを更新する（J-Quants の追加取得 → `build_processed.py`）たびに、`forward.py record` を実行する。独立な記録は 21 営業日（約 1 か月）あけて数える。12 期たまるまで結論は出さない。
 - 実行しない: 単元未満株（H1）、上位 50 銘柄（H3）、緩衝帯（H2）、進捗率の特徴量（H4）は未承認。
+
+## 追加（2026-11-14）: 底打ち・上昇しやすい局面（12 検定）と下がり方の特徴（探索的）
+```
+python scripts/w5/bottom_study.py     # 約 10〜20 分。家族 1（6 規則 × h{5, 21}）と家族 2（下げ状態 × 10 特徴）
+```
+仕様は `docs/w5_protocol.md`。家族 2 の yes / no の水準は、`data/jquants/results/bottom/summary.json` の `family2_descriptive_levels_discovery`。
