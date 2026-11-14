@@ -251,3 +251,34 @@ def test_rank_ic_and_summary_properties():
     s = evalsel.ic_summary(ics, years, pre, np.full(8, 0.002), np.full(8, 0.01))
     assert s["all"]["n"] == 8 and s["by_era"]["old_markets(<2022-04-04)"]["n"] == 4 and s["all"]["t"] > 2
     assert s["by_year"][2020]["n"] == 2 and abs(s["top15_minus_universe_before_cost_ann"] - 0.002 * evalsel.PERIODS_PER_YEAR) < 1e-12
+
+
+def test_empty_universe_period_does_not_poison_summary(tmp_path):
+    """母集団が空の期があっても、年率超過収益が NaN にならず、その期は報告される。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "w5"))
+    import run_selection
+    P, codes = synth_panel(n_dates=900, n_codes=60, seed=5)
+    root = tmp_path / "jq"
+    out = root / "processed"
+    out.mkdir(parents=True)
+    n, m = len(P.dates), len(codes)
+    prices = pd.DataFrame({"date": np.repeat(P.dates.values, m), "code": np.tile(codes, n), "open": P.raw_open.ravel(), "close": P.raw_close.ravel(),
+                           "adj_open": P.adj_open.ravel(), "adj_high": P.adj_high.ravel(), "adj_low": P.adj_low.ravel(), "adj_close": P.adj_close.ravel(),
+                           "turnover": P.turnover.ravel(), "limit_up": "0", "limit_down": "0"})
+    prices.to_parquet(out / "prices_daily.parquet", index=False)
+    prices[["code", "date"]].assign(no_trade=False).to_parquet(out / "quality_flags.parquet", index=False)
+    P.topix.reset_index().rename(columns={"index": "date"}).to_parquet(out / "topix_daily.parquet", index=False)
+    iv = intervals_for(codes, P.dates)
+    gap_from, gap_to = P.dates[640], P.dates[645]                  # 数日だけ、全銘柄が上場銘柄表にない（欠け）
+    a, b = iv.copy(), iv.copy()
+    a["valid_to"] = P.dates[639]
+    b["valid_from"] = P.dates[646]
+    pd.concat([a, b]).to_parquet(out / "listed_master.parquet", index=False)
+    fins = pd.DataFrame({"Code": codes, "DiscDate": pd.Timestamp("2019-06-01"), "usable_from": pd.Timestamp("2019-06-02"), "CurFYEn": "x",
+                         "FOP": 1.0, "FNP": 1.0, "FEPS": 1.0, "FDivAnn": 1.0, "BPS": 1.0, "ROE": 0.1})
+    fins.to_parquet(out / "fins_summary.parquet", index=False)
+    assert gap_from < gap_to
+    res = run_selection.main(root, "post2022", min_history=300, min_periods=4, models={"SEL-A": ("ridge", features.SEL_A)}, costs=(15.0,))
+    t = res["trials"]["SEL-A|equal|gate=0|cost=15"]["summary"]
+    assert np.isfinite(t["excess_vs_univ_ann"]) and np.isfinite(t["excess_vs_topix_ann"])
+    assert res["periods_with_small_universe(date_of_buy,count)"]

@@ -49,6 +49,12 @@ def manifest_sha(root: Path) -> str:
     return h.hexdigest()
 
 
+def _nm(a) -> float:
+    a = np.asarray(a, dtype=float)
+    a = a[np.isfinite(a)]
+    return float(a.mean()) if len(a) else float("nan")
+
+
 def earnings_in_window(P, fins: pd.DataFrame, t_idx: list, picks: dict) -> float:
     """保有銘柄のうち、窓（T+1〜T+22）に財務の開示がある割合（報告用のフラグ。選別には使わない）。"""
     d = fins[["Code", "DiscDate"]].dropna()
@@ -73,6 +79,8 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
     t_idx = P.rebalance_idx()
     mask = P.eligible(iv, markets, t_idx, min_history=min_history)
     y, raw, top = P.labels(t_idx)
+    n_el = mask.sum(axis=1)
+    low = [(str(P.dates[T + 1].date()), int(n_el[i])) for i, T in enumerate(t_idx) if n_el[i] < max(50, 0.25 * np.median(n_el[n_el > 0]))] if (n_el > 0).any() else []
     y = np.where(mask, y, np.nan)
     sd = features.standardized({**features.chart_features(P, t_idx), **features.fins_features(P, fins, t_idx)}, mask)
     yr = model.rank_gauss(y, mask)
@@ -100,11 +108,12 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
             continue
         k0 = ks[0]
         sub = t_idx[k0:]
-        univ = np.array([np.nanmean(np.where(mask[k], raw[k], np.nan)) for k in range(k0, len(t_idx))])
+        univ = np.array([_nm(np.where(mask[k], raw[k], np.nan)) for k in range(k0, len(t_idx))])
+        okp = np.isfinite(univ) & np.isfinite(top[k0:])                  # 母集団が空の期は評価しない（現金のまま。NaN を全体に広げない）
         years = np.array([P.dates[T + 1].year for T in sub])
         pre_era = np.array([P.dates[T + 1] < ERA_SPLIT for T in sub])
         ics = np.array([evalsel.rank_ic(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
-        gain = np.array([np.nanmean(y[k][evalsel.top_picks(sc[k])]) - np.nanmean(y[k][mask[k]]) for k in range(k0, len(t_idx))])
+        gain = np.array([_nm(y[k][evalsel.top_picks(sc[k])]) - _nm(y[k][mask[k]]) for k in range(k0, len(t_idx))])
         spr = np.array([evalsel.quantile_spread(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
         ic_all[mname] = evalsel.ic_summary(ics, years, pre_era, gain, spr)
         for wscheme in ("equal", "invvol"):
@@ -118,14 +127,18 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
                     picks_all[i] = evalsel.weights(cols, wscheme, sig[k])
                 for bps in costs:
                     r = portfolio.simulate(P.raw_open, P.adj_open, P.limit_up, P.limit_down, sub, picks_all, bps=bps)
-                    pret = evalsel.period_returns(r["equity"])
+                    pret_all = evalsel.period_returns(r["equity"])
+                    n = len(pret_all)
+                    sel_ok = okp[:n]
+                    pret, tpx, un, yr_ = pret_all[sel_ok], top[k0:k0 + n][sel_ok], univ[:n][sel_ok], years[:n][sel_ok]
+                    pre_ = pre_era[:n][sel_ok]
                     n = len(pret)
-                    s = evalsel.summarize(pret, top[k0:k0 + n], univ[:n])
-                    yearly = evalsel.by_year(pret, top[k0:k0 + n], years[:n])
+                    s = evalsel.summarize(pret, tpx, un)
+                    yearly = evalsel.by_year(pret, tpx, yr_)
                     era = {}
-                    for nm, sel in (("old_markets", pre_era[:n]), ("new_markets", ~pre_era[:n])):
+                    for nm, sel in (("old_markets", pre_), ("new_markets", ~pre_)):
                         if sel.sum() >= 6:
-                            e = evalsel.summarize(pret[sel], top[k0:k0 + n][sel], univ[:n][sel])
+                            e = evalsel.summarize(pret[sel], tpx[sel], un[sel])
                             era[nm] = {k: e[k] for k in ("periods", "excess_vs_topix_ann", "excess_vs_univ_ann", "t_vs_topix", "t_vs_univ")}
                     tag = f"{mname}|{wscheme}|gate={int(use_gate)}|cost={bps:g}"
                     rec = {"summary": s, "gate": evalsel.gate_check(s, yearly), "by_year": yearly, "by_era": era,
@@ -142,7 +155,8 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
                                                       "periods": n, "excess_vs_topix_ann": s["excess_vs_topix_ann"], "sharpe_period": s["sharpe_period"],
                                                       "protocol": code_ver, "data_manifest_sha256": data_sha, "universe_mode": mode})
     tags = [t for t in port_returns if t.endswith(f"cost={BASE_COST:g}")]
-    out = {"universe_mode": mode, "rebalances_total": len(t_idx), "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
+    out = {"universe_mode": mode, "rebalances_total": len(t_idx), "eligible_count_min_median_max": [int(n_el.min()), int(np.median(n_el)), int(n_el.max())],
+           "periods_with_small_universe(date_of_buy,count)": low, "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
            "ic": ic_all, "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
     if tags:
         n_min = min(len(port_returns[t]) for t in tags)
@@ -183,6 +197,6 @@ if __name__ == "__main__":
                     "new_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["new_markets(>=2022-04-04)"].items() if k in ("n", "mean", "t")},
                     "top15_minus_universe_before_cost_ann": round(v["top15_minus_universe_before_cost_ann"], 4),
                     "quintile_spread_per_period": round(v["quintile_spread_per_period"], 4)} for m, v in res["ic"].items()}
-    print(json.dumps({"ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "pbo": res.get("pbo"),
+    print(json.dumps({"periods_with_small_universe": res["periods_with_small_universe(date_of_buy,count)"], "ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "pbo": res.get("pbo"),
                       "caution": res["caution"], "ledger_chain": res["ledger_chain"]}, ensure_ascii=False, indent=1))
     print("詳細（集計のみ）:", Path(a.root) / "results" / "w5" / "summary.json")
