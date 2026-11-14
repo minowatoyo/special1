@@ -109,3 +109,9 @@ python scripts/w5/pattern_atlas.py    # v2: 市場区分を新旧をまたぐ 3 
 python scripts/w5/exclusion_study.py   # 約 5〜10 分。信用残の「避ける状態」（X1〜X4）が効くか（検証 A）、順位予測の上位 15 から除くと良くなるか（検証 B）。結果は results/exclusion/
 ```
 仕様は docs/w5_protocol.md「除外フィルターの検証」（事前固定）。主たる族は X1・X2・U12（定義が発見期間だけから決まったもの）。X3・X4・U1234 は、パターン図鑑で確認期間を見た後に選んだ由来なので、記述のみ（判定に使わない）。確認期間は 1 度だけ読み、台帳に記録する。事前に、信用残（`processed/margin_interest.parquet`）が必要。
+
+## 追加（2026-11-14）: S2 の実行可能性（口座での売買の模擬）
+```
+python scripts/w5/s2_portfolio.py      # 約 3〜5 分。1,000 万円・現物・100 株単位・コスト込みで、S2 が口座にいくら残るか。結果は results/s2_portfolio/
+```
+仕様は docs/w5_protocol.md「S2 の実行可能性」（事前固定）。試行は 2 本（主: 段階 B のみ、副: 段階 A＋B）。確認期間は S2 で既読なので、新しい証拠ではなく、目減りの計算。
