@@ -89,7 +89,7 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
     ledger = AppendOnlyLedger(root / "ledger" / "trials.jsonl")
     code_ver = "w5-protocol-v1"
     data_sha = manifest_sha(root)
-    results, port_returns, ic_all = {}, {}, {}
+    results, port_returns, ic_all, dropped = {}, {}, {}, {}
     for mname, (kind, names) in (models or MODELS).items():
         if kind == "lgbm":
             try:
@@ -110,6 +110,7 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
         sub = t_idx[k0:]
         univ = np.array([_nm(np.where(mask[k], raw[k], np.nan)) for k in range(k0, len(t_idx))])
         okp = np.isfinite(univ) & np.isfinite(top[k0:])                  # 母集団が空の期は評価しない（現金のまま。NaN を全体に広げない）
+        dropped[mname] = [(str(P.dates[T + 1].date()), "母集団なし" if not np.isfinite(univ[i]) else "TOPIX なし") for i, T in enumerate(sub) if not okp[i]]
         years = np.array([P.dates[T + 1].year for T in sub])
         pre_era = np.array([P.dates[T + 1] < ERA_SPLIT for T in sub])
         ics = np.array([evalsel.rank_ic(sc[k], y[k], mask[k]) for k in range(k0, len(t_idx))])
@@ -169,7 +170,7 @@ def main(root: Path, mode: str = "proposal_pre2022", min_history: int = 500, min
                 cmp_[f.rsplit("|gate", 1)[0]]["turnover_per_period"] = {"full": a["turnover_per_period"], "diff": b["turnover_per_period"]}
                 cmp_[f.rsplit("|gate", 1)[0]]["total_cost_yen"] = {"full": a["total_cost_yen"], "diff": b["total_cost_yen"]}
     out = {"universe_mode": mode, "rebalances_total": len(t_idx), "eligible_count_min_median_max": [int(n_el.min()), int(np.median(n_el)), int(n_el.max())],
-           "periods_with_small_universe(date_of_buy,count)": low, "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
+           "periods_with_small_universe(date_of_buy,count)": low, "periods_dropped_from_evaluation": dropped, "history_burn_in_periods": int((n_el == 0).sum()), "eligible_median": int(np.median(mask.sum(axis=1)[mask.any(axis=1)])) if mask.any() else 0,
            "ic": ic_all, "diff_vs_full_at_base_cost": cmp_, "trials": results, "n_trials_logged": len(port_returns), "data_manifest_sha256": data_sha}
     if tags:
         n_min = min(len(port_returns[t]) for t in tags)
@@ -210,7 +211,8 @@ if __name__ == "__main__":
                     "new_markets": {k: round(x, 3) if isinstance(x, float) else x for k, x in v["by_era"]["new_markets(>=2022-04-04)"].items() if k in ("n", "mean", "t")},
                     "top15_minus_universe_before_cost_ann": round(v["top15_minus_universe_before_cost_ann"], 4),
                     "quintile_spread_per_period": round(v["quintile_spread_per_period"], 4)} for m, v in res["ic"].items()}
-    print(json.dumps({"periods_with_small_universe": res["periods_with_small_universe(date_of_buy,count)"], "ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "diff_vs_full_at_base_cost": {k: {m: {a: round(b, 4) for a, b in d.items()} if isinstance(d, dict) else d for m, d in v.items()} for k, v in res["diff_vs_full_at_base_cost"].items()},
+    print(json.dumps({"periods_dropped_from_evaluation": res["periods_dropped_from_evaluation"], "history_burn_in_periods": res["history_burn_in_periods"],
+                      "periods_with_small_universe_after_burn_in": [x for x in res["periods_with_small_universe(date_of_buy,count)"] if x[1] > 0], "ic_diagnostic": ic_brief, "universe_mode": res["universe_mode"], "eligible_median": res["eligible_median"], "base_cost_trials": brief, "diff_vs_full_at_base_cost": {k: {m: {a: round(b, 4) for a, b in d.items()} if isinstance(d, dict) else d for m, d in v.items()} for k, v in res["diff_vs_full_at_base_cost"].items()},
                       "pbo": res.get("pbo"),
                       "caution": res["caution"], "ledger_chain": res["ledger_chain"]}, ensure_ascii=False, indent=1))
     print("詳細（集計のみ）:", Path(a.root) / "results" / "w5" / "summary.json")
