@@ -1,24 +1,32 @@
-# 前向きの記録の更新（月に 1 回ほど、PowerShell で実行）。
+# Update forward records (run about once a month, or more often).
 #   powershell -ExecutionPolicy Bypass -File scripts\update_and_record.ps1
-# 1. J-Quants の追加取得（取得済みの日は、チェックポイントで飛ばす）  2. 加工  3. 順位予測・S2 の記録  4. 採点・集計
-# APIキーは、実行のたびに入力する（画面に出さない。ファイルには書かない）。チャットに貼らない。
+# Steps: 1. fetch new J-Quants data (already-fetched days are skipped by the checkpoint)  2. build processed tables
+#        3. record forward predictions  4. score and summarize.
+# This file is ASCII only on purpose (Windows PowerShell 5.1 misreads UTF-8 without BOM).
+# The API key is asked each time (hidden, never written to a file). Never paste it in chat.
 $ErrorActionPreference = "Stop"
+$env:PYTHONUTF8 = "1"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not $env:JQUANTS_API_KEY) {
-    $sec = Read-Host "J-Quants APIキー" -AsSecureString
+    $sec = Read-Host "J-Quants API key" -AsSecureString
     $env:JQUANTS_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
-git pull
-python scripts/jquants/backfill.py --execute
-python scripts/jquants/build_processed.py
-python scripts/w5/forward.py record
-python scripts/w5/forward_s2.py record
-python scripts/w5/forward_events.py record
-python scripts/w5/forward.py score
-python scripts/w5/forward_s2.py score
-python scripts/w5/forward_events.py score
-python scripts/w5/forward.py summary
-python scripts/w5/forward_s2.py summary
-python scripts/w5/forward_events.py summary
-Remove-Item Env:JQUANTS_API_KEY
-Write-Host "完了。上の summary の出力（集計のみ）を貼る。"
+function Run($cmd) {
+    Write-Host ">>> $cmd"
+    Invoke-Expression $cmd
+    if ($LASTEXITCODE -ne 0) { throw "failed: $cmd (exit $LASTEXITCODE)" }
+}
+Run "git pull"
+Run "python scripts/jquants/backfill.py --execute"
+Run "python scripts/jquants/build_processed.py"
+Run "python scripts/w5/forward.py record"
+Run "python scripts/w5/forward_s2.py record"
+Run "python scripts/w5/forward_events.py record"
+Run "python scripts/w5/forward.py score"
+Run "python scripts/w5/forward_s2.py score"
+Run "python scripts/w5/forward_events.py score"
+Run "python scripts/w5/forward.py summary"
+Run "python scripts/w5/forward_s2.py summary"
+Run "python scripts/w5/forward_events.py summary"
+Remove-Item Env:JQUANTS_API_KEY -ErrorAction SilentlyContinue
+Write-Host "Done. Paste the summary output above (aggregates only)."
