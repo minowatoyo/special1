@@ -122,15 +122,19 @@ class AppendOnlyLedger:
         return out
 
     @staticmethod
-    def _hash(prev: str, typ: str, payload: dict) -> str:
-        return hashlib.sha256((prev + typ + _canon(payload)).encode("utf-8")).hexdigest()
+    def _hash(prev: str, typ: str, payload: dict, utc: str | None = None) -> str:
+        """utc を渡すと（hv=2 の行）、書いた時刻もハッシュに含める。前向きの記録の「書いた時刻」を、書き換えられないようにするため。
+        hv の印のない古い行は、従来の式（時刻を含まない）で検証する（既存の台帳は、そのまま検証できる）。"""
+        base = prev + typ + _canon(payload)
+        return hashlib.sha256((base + "|" + utc if utc is not None else base).encode("utf-8")).hexdigest()
 
     def verify(self) -> dict:
         """連鎖を検証する。戻り値: {ok, rows, first_bad}（先頭から数えた最初の不整合の行番号。なければ None）。"""
         prev, n = GENESIS, 0
         for i, r in enumerate(self._rows()):
             n += 1
-            if r.get("seq") != i or r.get("prev") != prev or r.get("hash") != self._hash(prev, r["type"], r["payload"]):
+            utc = r.get("utc") if r.get("hv") == 2 else None
+            if r.get("seq") != i or r.get("prev") != prev or r.get("hash") != self._hash(prev, r["type"], r["payload"], utc):
                 return {"ok": False, "rows": n, "first_bad": i}
             prev = r["hash"]
         return {"ok": True, "rows": n, "first_bad": None}
@@ -141,8 +145,8 @@ class AppendOnlyLedger:
             raise LedgerError(f"台帳の連鎖が壊れている（{v['first_bad']} 行目）。追記しない")
         rows = self._rows()
         prev = rows[-1]["hash"] if rows else GENESIS
-        row = {"seq": len(rows), "prev": prev, "type": typ, "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "payload": payload}
-        row["hash"] = self._hash(prev, typ, payload)
+        row = {"seq": len(rows), "prev": prev, "type": typ, "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "hv": 2, "payload": payload}
+        row["hash"] = self._hash(prev, typ, payload, row["utc"])
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a", encoding="utf-8", newline="") as fh:
             fh.write(_canon(row) + "\n")

@@ -199,3 +199,13 @@ python scripts/w5/lens_log.py score                       # J-Quants の日足�
 python scripts/w5/lens_log.py summary                     # 日足・分足 × LONG・WAIT・SKIP の集計
 ```
 銘柄の一覧は、先に固定する。LONG が 30 件（区分ごと）たまるまで、結論を出さない。仕様は docs/w5_protocol.md。
+
+## 追加（2026-11-15）: TradingAgents の意見の前向きの記録（橋渡し）
+`tools/tradingagents_bridge/`（README あり）。TradingAgents（別フォルダ・別の仮想環境。コミット 9fa1196）で、固定した銘柄の一覧を、**その日の引け後だけ**実行 → special1 で記録・採点。
+```
+C:\Users\User\TradingAgents\.venv\Scripts\python.exe tools\tradingagents_bridge\run_agents.py --env C:\Users\User\TradingAgents\.env   # 実行（毎営業日の引け後）
+python scripts/w5/agents_log.py add --dir tools/tradingagents_bridge/out    # 記録
+python scripts/w5/agents_log.py score                                         # 採点（データ更新のあと）
+python scripts/w5/agents_log.py summary                                       # 意見ごと・強気/中立/弱気ごとの集計（強気 30 件まで結論を出さない）
+```
+`universe.txt` に、固定した銘柄の一覧を書く（記録を始めたあとは、変えない）。仕様は docs/w5_protocol.md。
