@@ -169,3 +169,11 @@ python scripts/w5/extreme_events.py        # 約 10 分。6 出来事 × 5 段�
 python scripts/w5/short_feasibility.py     # 約 2〜3 分。売り残の重さ・流動性で分け、逆日歩の感度・資金配分の計算を加えた（要: 信用残 processed/margin_interest.parquet）
 ```
 仕様は docs/w5_protocol.md「全銘柄での極端な出来事の漂流と、信用売りの精査」（事前固定）。`extreme_events.py` の画面の出力は、通過したセルと、通過しなかったセルの発見期間の値だけ（全セルは results/extremes/summary.json）。
+
+## 追加（2026-11-15）: ボラを合わせた比較（C）、極端な動きの回避フィルター（B）
+```
+git pull
+python scripts/w5/vol_matched_study.py         # 約 10 分。極端な出来事の後の弱さが、高ボラ株の低リターンで説明されるか。結果は results/vol_matched/
+python scripts/w5/extreme_filter_study.py      # 約 5〜10 分。順位予測の上位 15 から、直近 5 営業日に極端な動きがあった銘柄を除くと良くなるか。結果は results/extreme_filter/
+```
+仕様は docs/w5_protocol.md「極端な動きの回避フィルターと、ボラを合わせた比較」（事前固定）。`vol_matched_study.py` の `verdict_counts` と、`cells` の `verdict`（ボラでは説明できない／一部／ボラで説明される）を見る。
