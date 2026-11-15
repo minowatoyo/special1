@@ -207,3 +207,38 @@ def test_attr_at_matches_interval_at_the_date():
     iv = _iv(P, codes, {codes[0]: (400, "0102", "0101", "1", "2")})
     a = events.attr_at(P, iv, np.array([399, 400, 401, 500]), np.array([0, 0, 0, 1]), "margin_class")
     assert list(a) == ["1", "2", "2", "2"]
+
+
+def test_short_refinement_splits_by_short_balance_and_gyaku_hibu(tmp_path):
+    import short_feasibility as sf
+    P, codes, _ = seasonal_panel(n_codes=90, seed=31, turnover=1e8)
+    fins = _fins(P, codes)
+    rng = np.random.default_rng(3)
+    n = len(P.dates)
+    heavy = np.arange(90) < 30                                           # 売り残が重い銘柄: ストップ高の後、5 日で下がらず、むしろ上がる（植えた）
+    for j in range(90):
+        for t in rng.choice(np.arange(300, n - 20), 6, replace=False):
+            P.limit_up[t, j] = True
+            P.adj_high[t, j] = P.adj_close[t, j]
+            P.adj_open[t + 6:, j] *= 1.04 if heavy[j] else 0.94
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    _write_limits(root, P, codes)
+    _iv(P, codes, {}).to_parquet(root / "processed" / "listed_master.parquet", index=False)
+    fins.to_parquet(root / "processed" / "fins_summary.parquet", index=False)
+    idx = np.arange(300, n - 6, 5)
+    rows = [pd.DataFrame({"code": c, "date": P.dates[idx], "long_vol": 1e5, "short_vol": 3e6 if heavy[i] else 1e4, "usable_from": P.dates[idx + 1]}) for i, c in enumerate(codes)]
+    pd.concat(rows, ignore_index=True).to_parquet(root / "processed" / "margin_interest.parquet", index=False)
+    res = sf.main(root)
+    c = res["refinement"]["by_period"]["confirmation"]
+    sb = c["by_short_balance"]
+    assert sb["light"]["events"] > 20 and sb["heavy"]["events"] > 20
+    assert sb["light"]["net_event_weighted_mean"] > 0.03 and sb["heavy"]["net_event_weighted_mean"] < -0.03        # 軽い群は売りで勝ち、重い群は負ける
+    assert abs(sb["light"]["after_gyaku_hibu_per_5d"]["1.0%"] - (sb["light"]["net_event_weighted_mean"] - 0.01)) < 1e-9
+    assert "all_loan" in c["sizing"] and "short_balance_light" in c["sizing"]
+    sz = c["sizing"]["short_balance_light"]["per_position_pct_of_equity"]["2%"]
+    assert sz["annual_contribution"] > 0 and sz["worst_single_loss"] < 0
+    # 売り残のデータがなければ、すべて「不明」に入り、落ちない
+    (root / "processed" / "margin_interest.parquet").unlink()
+    res2 = sf.main(root)
+    assert res2["refinement"]["by_period"]["confirmation"]["by_short_balance"]["unknown"]["events"] > 0

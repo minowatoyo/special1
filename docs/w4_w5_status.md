@@ -161,3 +161,11 @@ python scripts/w5/watchlist.py add --code 7203 --cause 一過性 --view 戻る -
 ```
 `stock_profile.py` の出力に、財務の強さ F（8 項目）・財務危機・簿価利回りの順位・直近の開示の有無が加わった。`watchlist.py` は、投資の型・確認時期・反証条件を記録し、21・63・126 営業日で採点する。
 出力の `columns_available` で、決算データの列（売上・営業利益・純利益・総資産・純資産・営業 CF・株式数・BPS）が読めているかを確かめる。false があれば、その項目は計算されていない。
+
+## 追加（2026-11-15）: 全銘柄での極端な出来事の漂流、信用売りの精査
+```
+git pull
+python scripts/w5/extreme_events.py        # 約 10 分。6 出来事 × 5 段階 × 2 保有 = 60 検定（売買代金 500 万円以上の全銘柄）。結果は results/extremes/
+python scripts/w5/short_feasibility.py     # 約 2〜3 分。売り残の重さ・流動性で分け、逆日歩の感度・資金配分の計算を加えた（要: 信用残 processed/margin_interest.parquet）
+```
+仕様は docs/w5_protocol.md「全銘柄での極端な出来事の漂流と、信用売りの精査」（事前固定）。`extreme_events.py` の画面の出力は、通過したセルと、通過しなかったセルの発見期間の値だけ（全セルは results/extremes/summary.json）。
