@@ -121,3 +121,35 @@ def test_forward_valid_when_recorded_before_the_buy_open(tmp_path, monkeypatch):
     assert s["outcomes_not_forward_valid"] == 0 and s["outcomes_scored"] >= 8
     assert s["by_group"]["h=21"]["bullish"]["mean_excess"] > 0.02 and s["by_group"]["h=21"]["bearish"]["mean_excess"] < 0.02
     assert "結論を出さない" in s["conclusion"] and s["ledger"]["ok"]
+
+
+def test_draw_is_stratified_reproducible_recorded_before_running_and_excludes_recent(tmp_path):
+    import agents_sample as asp
+    P, codes, _ = seasonal_panel(n_codes=60, seed=71, turnover=1e9)
+    # 段階を作る: 売買代金（turnover）を、銘柄ごとに変える（A: 20 銘柄、B: 20、C: 20）
+    to = np.where(np.arange(60) < 20, 1e9, np.where(np.arange(60) < 40, 1e8, 3e7))
+    P.turnover[:] = to[None, :]
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    f = root / "processed" / "prices_daily.parquet"
+    d = pd.read_parquet(f)
+    d["turnover"] = d["code"].map({c: to[i] for i, c in enumerate(codes)})
+    d.to_parquet(f, index=False)
+    out = tmp_path / "today.txt"
+    r1 = asp.draw(root, 9, "2026-11-12", write_file=out)
+    assert r1["status"] == "drawn" and [len(v) for v in r1["tickers"].values()] == [3, 3, 3] and r1["frame_size"] == {"A_ge500M": 20, "B_50M_500M": 20, "C_20M_50M": 20}
+    assert len(out.read_text(encoding="utf-8").split()) == 9
+    r2 = asp.draw(root, 9, "2026-11-12", write_file=out)                         # 同じ日は、同じ一覧（再抽出しない）
+    assert r2["status"] == "already_drawn" and r2["tickers"] == r1["tickers"]
+    r3 = asp.draw(root, 9, "2026-11-13", write_file=out)                         # 翌日: 直近に抽出した銘柄は、除く
+    drawn1 = {t for v in r1["tickers"].values() for t in v}
+    assert r3["status"] == "drawn" and not (drawn1 & {t for v in r3["tickers"].values() for t in v}) and r3["excluded_recent"] == 9
+    # 抽出の記録が、台帳にある → 実行結果の記録に、段階が付く
+    rec = {"schema": "agents-run/v1", "ticker": r1["tickers"]["A_ge500M"][0], "trade_date": "2026-11-12", "rating": "Buy", "run_utc": "2026-11-12T08:00:00Z", "backfill": False,
+           "decision_sha256": "x" * 64, "decision_excerpt": "e", "config": {}, "elapsed_sec": 120.5, "usage_tokens": {"m": {"input_tokens": 90000, "output_tokens": 10000, "total_tokens": 100000}}}
+    assert al.add(root, rec)["status"] == "recorded"
+    s = al.summary(root)
+    assert s["draws"] == {"days": 2, "tickers_drawn": 18, "runs_recorded_from_draws": 1, "drawn_but_not_recorded": 17}
+    assert s["cost_measure"] == {"runs_with_usage": 1, "mean_total_tokens_per_run": 100000, "mean_seconds_per_run": 120.5}
+    # 実行側: トークン数の差を、実行前後から出す
+    assert ra._usage_diff({"m": {"total_tokens": 5, "input_tokens": 3, "output_tokens": 2}}, {"m": {"total_tokens": 12, "input_tokens": 8, "output_tokens": 4}}) == {"m": {"input_tokens": 5, "output_tokens": 2, "total_tokens": 7}}

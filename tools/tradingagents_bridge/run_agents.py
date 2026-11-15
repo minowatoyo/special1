@@ -13,6 +13,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,7 +29,18 @@ def safe(t: str) -> str:
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in t)[:40]
 
 
-def run_one(graph, ticker: str, trade_date: str, config_summary: dict, out_dir: Path, allow_past: bool = False, now_date: str | None = None) -> dict:
+def _usage_diff(before: dict, after: dict) -> dict:
+    """モデルごとのトークン数の、実行前後の差（langchain の UsageMetadataCallbackHandler.usage_metadata）。"""
+    out = {}
+    for model, u in (after or {}).items():
+        b = (before or {}).get(model, {})
+        d = {k: int(u.get(k, 0)) - int(b.get(k, 0)) for k in ("input_tokens", "output_tokens", "total_tokens") if isinstance(u.get(k, 0), (int, float))}
+        if any(d.values()):
+            out[model] = d
+    return out
+
+
+def run_one(graph, ticker: str, trade_date: str, config_summary: dict, out_dir: Path, allow_past: bool = False, now_date: str | None = None, usage_fn=None) -> dict:
     """1 銘柄を実行して JSON を保存する。同じ銘柄・同じ日は、すでにあればスキップ。過去日付は、allow_past のときだけ（backfill の印）。"""
     now_date = now_date or today_jst()
     backfill = trade_date < now_date
@@ -37,11 +49,14 @@ def run_one(graph, ticker: str, trade_date: str, config_summary: dict, out_dir: 
     path = out_dir / f"{safe(ticker)}_{trade_date}.json"
     if path.exists():
         return {"ticker": ticker, "status": "already_exists", "file": str(path)}
+    u0 = json.loads(json.dumps(usage_fn())) if usage_fn else None
+    t0 = time.time()
     final_state, rating = graph.propagate(ticker, trade_date)
+    elapsed = round(time.time() - t0, 1)
     decision = str((final_state or {}).get("final_trade_decision", ""))
     rec = {"schema": SCHEMA, "ticker": ticker, "trade_date": trade_date, "run_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "rating": str(rating),
            "backfill": bool(backfill), "decision_sha256": hashlib.sha256(decision.encode("utf-8")).hexdigest(), "decision_excerpt": decision[:600], "decision_full": decision,
-           "config": config_summary}
+           "config": config_summary, "elapsed_sec": elapsed, "usage_tokens": _usage_diff(u0, usage_fn()) if usage_fn else None}
     out_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ticker": ticker, "status": "done", "rating": str(rating), "file": str(path)}
@@ -67,7 +82,18 @@ def make_graph(args):
                                                       capture_output=True, text=True).stdout.strip() or None
     except Exception:  # noqa: BLE001
         pass
-    return TradingAgentsGraph(debug=False, config=config), summary
+    handler = None
+    try:
+        from langchain_core.callbacks import UsageMetadataCallbackHandler
+        handler = UsageMetadataCallbackHandler()
+    except Exception:  # noqa: BLE001
+        pass
+    kw = {"callbacks": [handler]} if handler else {}
+    analysts = [x.strip() for x in args.analysts.split(",")] if args.analysts else None
+    if analysts:
+        kw["selected_analysts"] = analysts
+        summary["selected_analysts"] = analysts
+    return TradingAgentsGraph(debug=False, config=config, **kw), summary, (lambda: handler.usage_metadata) if handler else None
 
 
 def main() -> None:
@@ -82,6 +108,7 @@ def main() -> None:
     ap.add_argument("--deep")
     ap.add_argument("--quick")
     ap.add_argument("--language", default="Japanese")
+    ap.add_argument("--analysts", default=None, help="使うアナリスト（コンマ区切り: market,social,news,fundamentals）。日本株は、social（StockTwits・Reddit）のデータが薄いので、外すと、費用が減る。使った一覧は、記録に残る")
     a = ap.parse_args()
     if a.env:
         from dotenv import load_dotenv
@@ -90,10 +117,10 @@ def main() -> None:
     if not tickers:
         sys.exit("銘柄がない。universe.txt に、固定した一覧を書く（1 行に 1 銘柄、例: 7203.T）")
     date = a.date or today_jst()
-    graph, summary = make_graph(a)
+    graph, summary, usage_fn = make_graph(a)
     for t in tickers:
         try:
-            print(json.dumps(run_one(graph, t, date, summary, Path(a.out), a.allow_past), ensure_ascii=False))
+            print(json.dumps(run_one(graph, t, date, summary, Path(a.out), a.allow_past, usage_fn=usage_fn), ensure_ascii=False))
         except Exception as e:  # noqa: BLE001  1 銘柄の失敗で全体を止めない
             print(json.dumps({"ticker": t, "status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"}, ensure_ascii=False))
 

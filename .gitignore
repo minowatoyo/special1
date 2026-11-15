@@ -9,3 +9,6 @@ tools/tradingview_ai_lens/packets/
 
 # TradingAgents の橋渡しの出力（手元のデータ。Git の対象外）
 tools/tradingagents_bridge/out/
+
+# TradingAgents: 今日の抽出の一覧（手元のデータ）
+tools/tradingagents_bridge/today.txt

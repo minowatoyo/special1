@@ -43,8 +43,11 @@ def add(root: Path, rec: dict) -> dict:
     if any(r["type"] == "agents_run" and r["payload"]["key"] == key for r in ledger._rows()):
         return {"status": "already_recorded", "key": key}
     code = lens_log.jq_code("TSE:" + str(rec["ticker"]).split(".")[0]) if str(rec["ticker"]).upper().endswith(".T") else None
-    payload = {"key": key, "ticker": rec["ticker"], "jq_code": code, "trade_date": rec["trade_date"], "rating": rec["rating"], "group": rating_group(rec["rating"]), "backfill": bool(rec.get("backfill")),
-               "run_utc": rec.get("run_utc"), "decision_sha256": rec.get("decision_sha256"), "decision_excerpt": rec.get("decision_excerpt"), "config": rec.get("config")}
+    tier = next((name for r in ledger._rows() if r["type"] == "agents_draw" and r["payload"]["date"] == rec["trade_date"]
+                 for name, ts in r["payload"]["tickers"].items() if rec["ticker"] in ts), None)
+    payload = {"key": key, "ticker": rec["ticker"], "jq_code": code, "trade_date": rec["trade_date"], "rating": rec["rating"], "group": rating_group(rec["rating"]), "backfill": bool(rec.get("backfill")), "tier": tier, "drawn": tier is not None,
+               "run_utc": rec.get("run_utc"), "decision_sha256": rec.get("decision_sha256"), "decision_excerpt": rec.get("decision_excerpt"), "config": rec.get("config"),
+               "elapsed_sec": rec.get("elapsed_sec"), "usage_tokens": rec.get("usage_tokens")}
     ledger.append_event("agents_run", payload)
     return {"status": "recorded", "key": key, "rating": rec["rating"], "group": payload["group"], "scorable_with_jquants": code is not None, "backfill": payload["backfill"]}
 
@@ -95,7 +98,7 @@ def score(root: Path) -> dict:
             continue
         buy_open = datetime(P.dates[t + 1].year, P.dates[t + 1].month, P.dates[t + 1].day, 9, 0, tzinfo=JST)          # 買いの日の寄り付き（日本時間 9:00）
         valid = (not pl["backfill"]) and _utc(r["utc"]) < buy_open.astimezone(timezone.utc)
-        ledger.append_event("agents_outcome", {"key": pl["key"], "h": h, "status": "scored", "rating": pl["rating"], "group": pl["group"], "buy_day": str(P.dates[t + 1].date()),
+        ledger.append_event("agents_outcome", {"key": pl["key"], "h": h, "status": "scored", "rating": pl["rating"], "group": pl["group"], "tier": pl.get("tier"), "drawn": pl.get("drawn"), "buy_day": str(P.dates[t + 1].date()),
                                                "ret": round(float(f[j]), 5), "excess": round(float(f[j] - um), 5), "forward_valid": bool(valid)})
         n += 1
     return {"scored": n, "pending": int(pending), "ledger": ledger.verify()}
@@ -129,6 +132,22 @@ def summary(root: Path) -> dict:
         diff = float(bull.mean() - rest.mean())
         se = float(np.sqrt(bull.var(ddof=1) / len(bull) + rest.var(ddof=1) / len(rest))) if len(bull) > 1 and len(rest) > 1 else float("nan")
         res["bullish_minus_rest_21d"] = {"diff": round(diff, 4), "t": round(diff / se, 2) if se and np.isfinite(se) and se > 0 else None, "bullish_n": int(len(bull)), "rest_n": int(len(rest))}
+    sd = np.concatenate([bull, rest]).std(ddof=1) if len(bull) + len(rest) > 2 else float("nan")
+    if len(bull) > 1 and len(rest) > 1 and np.isfinite(sd):
+        res["detectable_diff_21d_2se"] = round(float(2 * sd * np.sqrt(1 / len(bull) + 1 / len(rest))), 4)
+    tiers = {}
+    for tname in sorted({o.get("tier") for o in s21 if o.get("tier")}):
+        b = np.array([o["excess"] for o in s21 if o.get("tier") == tname and o["group"] == "bullish"])
+        r_ = np.array([o["excess"] for o in s21 if o.get("tier") == tname and o["group"] != "bullish"])
+        tiers[tname] = {"bullish_n": int(len(b)), "rest_n": int(len(r_)), "diff": round(float(b.mean() - r_.mean()), 4) if len(b) and len(r_) else None}
+    res["by_tier_bullish_minus_rest_21d"] = tiers
+    draws = [r["payload"] for r in rows if r["type"] == "agents_draw"]
+    drawn_total = sum(len(t) for d in draws for t in d["tickers"].values())
+    res["draws"] = {"days": len(draws), "tickers_drawn": drawn_total, "runs_recorded_from_draws": sum(1 for p in runs if p.get("drawn")),
+                    "drawn_but_not_recorded": drawn_total - sum(1 for p in runs if p.get("drawn"))}
+    toks = [sum(u.get("total_tokens", 0) for u in (p.get("usage_tokens") or {}).values()) for p in runs if p.get("usage_tokens")]
+    secs = [p["elapsed_sec"] for p in runs if p.get("elapsed_sec")]
+    res["cost_measure"] = {"runs_with_usage": len(toks), "mean_total_tokens_per_run": int(np.mean(toks)) if toks else None, "mean_seconds_per_run": round(float(np.mean(secs)), 1) if secs else None}
     res["conclusion"] = f"強気が {len(bull)} 件（21 日で採点済み）。{MIN_BULLISH} 件たまるまで、結論を出さない。既定は「優位性なし」" if len(bull) < MIN_BULLISH \
         else "強気が 30 件以上。事前の基準（強気 − 強気でない > 0、t > 2）で判断する"
     res["ledger"] = ledger.verify()
