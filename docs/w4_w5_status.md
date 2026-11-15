@@ -136,3 +136,10 @@ python scripts/w5/margin_study.py
 Remove-Item Env:JQ_EXEC                # 終わったら、元に戻す
 ```
 仕様は docs/w5_protocol.md「修正した『買える日』での測り直し」。**まず rule_study・pattern_atlas・explore_map の 3 つ**（結論に使った主なもの）。残りは、必要なら。
+
+## 追加（2026-11-14）: 前向きの記録の更新（月 1 回）と、信用売りの実行可能性
+```
+powershell -ExecutionPolicy Bypass -File scripts\update_and_record.ps1    # 追加取得 → 加工 → 順位予測・S2 の記録 → 採点・集計。キーは実行時に入力（画面に出ない）
+python scripts/w5/short_feasibility.py                                    # ストップ高の翌朝の空売りの、コスト・貸借・踏み上げの計算（--rt-cost 0.004 --borrow 0.0115 を、証券会社の条件に合わせて変更）
+```
+初回の `update_and_record.ps1` は、追加取得が、取得済みの日をチェックポイントで飛ばすか確かめるため、出力を貼る。独立な記録は 21 営業日あけて数える。12 期たまるまで結論は出さない（S2 は 12 か月）。

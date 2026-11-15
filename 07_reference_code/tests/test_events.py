@@ -152,3 +152,58 @@ def test_exec_switch_changes_only_the_limit_up_after_open_case(monkeypatch):
     assert rules.exec_tag() == "_execopen" and fixed[500, 0] and not fixed[500, 1]
     diff = fixed != legacy
     assert diff.sum() == 1 and diff[500, 0]                                         # 他の場所は同じ
+
+
+def _write_limits(root, P, codes):
+    """_write_processed は limit_up を "0" 固定で書く。パネルのストップ高を、価格表に書き込む。"""
+    f = root / "processed" / "prices_daily.parquet"
+    d = pd.read_parquet(f)
+    d["limit_up"] = np.where(P.limit_up.ravel(), "1", "0")
+    d.to_parquet(f, index=False)
+
+
+def test_short_feasibility_counts_only_loan_stocks_and_applies_costs(tmp_path):
+    import short_feasibility as sf
+    P, codes, _ = seasonal_panel(n_codes=80, seed=21, turnover=1e8)
+    fins = _fins(P, codes)
+    rng = np.random.default_rng(2)
+    n = len(P.dates)
+    for j in range(60):
+        for t in rng.choice(np.arange(300, n - 20), 6, replace=False):
+            P.limit_up[t, j] = True
+            P.adj_high[t, j] = P.adj_close[t, j]                      # ストップ高で引けた
+            P.adj_open[t + 6:, j] *= 0.94                              # 5 営業日後の始値が 6% 下がる（植えた）
+    iv = _iv(P, codes, {})
+    iv.loc[iv["code"].isin(codes[30:]), "margin_class"] = "1"          # 後半の銘柄は貸借でない
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    _write_limits(root, P, codes)
+    iv.to_parquet(root / "processed" / "listed_master.parquet", index=False)
+    fins.to_parquet(root / "processed" / "fins_summary.parquet", index=False)
+    res = sf.main(root)
+    c = res["periods"]["confirmation"]
+    assert 0.4 < res["loan_share"] < 0.6 and c["loan_events"] > 0 and c["loan_events"] < c["events"]
+    gross = c["market_neutral_before_cost"]["month_mean"]
+    net = c["market_neutral_after_cost"]["month_mean"]
+    assert gross > 0.03 and 0.003 < gross - net < 0.006                # コスト（0.4% ＋ 貸株料）が引かれる
+    assert res["viable_candidate"] and c["distribution_unhedged_per_trade"]["p50"] > 0.03
+    assert (root / "results" / "short_feasibility" / "summary.json").exists()
+    # 先読みなし: 結果は t+6 までの価格だけに依存する。効果がなければ候補にならない
+    P2, codes2, _ = seasonal_panel(n_codes=80, seed=22, turnover=1e8)
+    for j in range(60):
+        for t in rng.choice(np.arange(300, n - 20), 6, replace=False):
+            P2.limit_up[t, j] = True
+            P2.adj_high[t, j] = P2.adj_close[t, j]
+    root2 = tmp_path / "n"
+    _write_processed(root2, P2, codes2)
+    _write_limits(root2, P2, codes2)
+    _iv(P2, codes2, {}).to_parquet(root2 / "processed" / "listed_master.parquet", index=False)
+    _fins(P2, codes2).to_parquet(root2 / "processed" / "fins_summary.parquet", index=False)
+    assert not sf.main(root2)["viable_candidate"]
+
+
+def test_attr_at_matches_interval_at_the_date():
+    P, codes, _ = seasonal_panel(n_codes=3, seed=1)
+    iv = _iv(P, codes, {codes[0]: (400, "0102", "0101", "1", "2")})
+    a = events.attr_at(P, iv, np.array([399, 400, 401, 500]), np.array([0, 0, 0, 1]), "margin_class")
+    assert list(a) == ["1", "2", "2", "2"]

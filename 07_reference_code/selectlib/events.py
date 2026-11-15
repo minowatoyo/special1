@@ -197,6 +197,20 @@ def overnight_gap(P, t: np.ndarray, j: np.ndarray) -> np.ndarray:
     return out
 
 
+def attr_at(P, iv: pd.DataFrame, t: np.ndarray, j: np.ndarray, col: str) -> np.ndarray:
+    """日 t（位置）における、銘柄 j の上場銘柄表の属性（区間 valid_from ≤ 日 ≤ valid_to）。無ければ None。"""
+    t, j = np.asarray(t, int), np.asarray(j, int)
+    q = pd.DataFrame({"code": pd.Series(np.array(P.codes, dtype=object)[j]).astype(str), "date": P.dates.values[t], "k": np.arange(len(t))}).sort_values("date")
+    d = iv[["code", col, "valid_from", "valid_to"]].copy()
+    d["code"] = d["code"].astype(str)
+    d = d.sort_values("valid_from")
+    m = pd.merge_asof(q, d, left_on="date", right_on="valid_from", by="code", direction="backward")
+    out = np.full(len(t), None, dtype=object)
+    ok = (m["valid_to"] >= m["date"]).to_numpy()
+    out[m["k"].to_numpy()[ok]] = m[col].to_numpy()[ok]
+    return out
+
+
 def excess_matrix(P, ok: np.ndarray, h: int) -> np.ndarray:
     F = np.where(ok, rules.forward_returns(P, h), np.nan)
     with np.errstate(invalid="ignore"):
