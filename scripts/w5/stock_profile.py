@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "jquants"))
 sys.path.insert(0, str(Path(__file__).parent))
 import forward_s2 as fs2  # noqa: E402
 import schema  # noqa: E402
-from selectlib import elastic  # noqa: E402
+from selectlib import elastic, fscore  # noqa: E402
 
 FLOOR_VA = 5e7
 
@@ -99,6 +99,17 @@ def snapshot(root: Path, code: str, asof: str | None = None) -> dict:
     sig = elastic.sigma_daily(c)[s, jj]
     out["current"] = {"excess_5d": _r(B["ex5"][s, jj]), "excess_21d": ex21, "from_52w_high": _r(c[s, jj] / hi252 - 1) if np.isfinite(hi252) else None,
                       "drop_event_today": bool(ev[s, jj]), "drop_threshold_5d": _r(-max(elastic.Z * sig * np.sqrt(5), elastic.FLOOR)) if np.isfinite(sig) else None}
+    D = fscore.daily(P, fins)
+    by_row = D["book_yield"][s]
+    mfl = floor[s] & np.isfinite(by_row)
+    at = fscore.annual_table(P, fins)
+    last = at[at["j"] == j_all].sort_values("t").tail(1) if len(at) else at
+    out["fundamentals"] = {"F": _r(D["F"][s, j_all], 3), "F_class": (None if not np.isfinite(D["F"][s, j_all]) else "高" if D["F"][s, j_all] >= fscore.F_HIGH else "低" if D["F"][s, j_all] <= fscore.F_LOW else "中"),
+                           "signals": {k: (None if not np.isfinite(last[k].iloc[0]) else bool(last[k].iloc[0])) for k in fscore.SIGNALS} if len(last) else {},
+                           "distress": (None if not np.isfinite(D["distress"][s, j_all]) else bool(D["distress"][s, j_all] > 0.5)),
+                           "book_yield": _r(by_row[j_all], 3),
+                           "share_of_universe_cheaper_pct": _r(100.0 * float((by_row[mfl] > by_row[j_all]).mean()), 1) if np.isfinite(by_row[j_all]) and mfl.sum() >= 30 else None,
+                           "disclosure_in_last_6_business_days": bool(D["news"][s, j_all])}
     out["disclosures_last_20_business_days"] = disclosures(fins, code, P.dates)
     detail = [{"event_date": str(P.dates[t].date()), "excess_5d": _r(B["ex5"][t, jj]), "rebound10": _r(B["ex_reb"][t, jj]),
                "recovered_half_21d": (None if not np.isfinite(sc["recovered"][t, jj]) else bool(sc["recovered"][t, jj]))} for t in ts]

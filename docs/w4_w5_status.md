@@ -153,3 +153,11 @@ python scripts/w5/watchlist.py score                  # 22 営業日目の始値
 python scripts/w5/watchlist.py summary                # 原因の分類ごとの集計（12 件未満は結論を出さない）
 ```
 仕様は docs/w5_protocol.md「個別株の弾力性の検証」「気になった銘柄の診断と、指定の前向きの記録」（事前固定）。
+
+## 追加（2026-11-15）: 期待と実態の不一致（割安 × 財務の強さ）、材料のない下げ、財務危機
+```
+python scripts/w5/mismatch_study.py                   # 約 10 分。9 検定（割安 × F、材料なしの下げ、財務危機）。結果は results/mismatch/
+python scripts/w5/watchlist.py add --code 7203 --cause 一過性 --view 戻る --type 業績回復 --check "次の決算" --exit "下方修正が出たら撤回"
+```
+`stock_profile.py` の出力に、財務の強さ F（8 項目）・財務危機・簿価利回りの順位・直近の開示の有無が加わった。`watchlist.py` は、投資の型・確認時期・反証条件を記録し、21・63・126 営業日で採点する。
+出力の `columns_available` で、決算データの列（売上・営業利益・純利益・総資産・純資産・営業 CF・株式数・BPS）が読めているかを確かめる。false があれば、その項目は計算されていない。
