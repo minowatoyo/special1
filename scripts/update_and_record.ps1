@@ -4,10 +4,15 @@
 #        3. record forward predictions  4. score and summarize.
 # This file is ASCII only on purpose (Windows PowerShell 5.1 misreads UTF-8 without BOM).
 # The API key is asked each time (hidden, never written to a file). Never paste it in chat.
+param([switch]$AskKey)   # -AskKey: always ask for the key (use after the key was rotated)
 $ErrorActionPreference = "Stop"
 $env:PYTHONUTF8 = "1"
 Set-Location (Split-Path -Parent $PSScriptRoot)
-if (-not $env:JQUANTS_API_KEY) {
+$keyFile = Join-Path $HOME ".jquants_key"
+if ((-not $env:JQUANTS_API_KEY) -and (Test-Path $keyFile) -and (-not $AskKey)) {
+    Write-Host "NOTE: no JQUANTS_API_KEY in this window; the key file $keyFile will be used. If the key was rotated, delete the file or run with -AskKey."
+}
+if ($AskKey -or (-not $env:JQUANTS_API_KEY -and -not (Test-Path $keyFile))) {
     $sec = Read-Host "J-Quants API key" -AsSecureString
     $env:JQUANTS_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
