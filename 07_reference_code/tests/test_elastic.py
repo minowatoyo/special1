@@ -151,3 +151,21 @@ def test_profile_and_watchlist_roundtrip_with_forward_scoring(tmp_path):
 def wl_rows(root):
     from forecastlib.ledger import AppendOnlyLedger
     return AppendOnlyLedger(root / "ledger" / "watchlist.jsonl")._rows()
+
+
+def test_load_extends_master_to_last_price_day(tmp_path):
+    import run_selection as rs
+    P, codes, _ = elastic_panel(n_codes=5, seed=2, dates=("2024-01-01", "2024-12-31"))
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    f = root / "processed" / "listed_master.parquet"
+    iv = pd.read_parquet(f)
+    iv["valid_to"] = P.dates[-3]                                  # 銘柄表の最後のスナップショットが、価格の最終日より 2 営業日早い
+    iv.to_parquet(f, index=False)
+    _, _, tp, iv2, _ = rs.load(root)
+    assert (iv2["valid_to"] == tp["date"].max()).all()
+    assert (iv["valid_to"] == P.dates[-3]).all()                  # 元のファイルは変えない
+    # 最後のスナップショットが最終日以降なら、何も変えない
+    iv["valid_to"] = P.dates[-1]
+    iv.to_parquet(f, index=False)
+    assert (rs.load(root)[3]["valid_to"] == P.dates[-1]).all()

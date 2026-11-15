@@ -39,9 +39,22 @@ def load(root: Path):
     pr = pd.read_parquet(pf, columns=[c for c in want if c in pq.read_schema(pf).names])
     fl = pd.read_parquet(root / "processed" / "quality_flags.parquet", columns=["code", "date", "no_trade"])
     tp = pd.read_parquet(root / "processed" / "topix_daily.parquet")
-    iv = pd.read_parquet(root / "processed" / "listed_master.parquet")
+    iv = extend_master(pd.read_parquet(root / "processed" / "listed_master.parquet"), tp)
     fins = pd.read_parquet(root / "processed" / "fins_summary.parquet")
     return pr, fl, tp, iv, fins
+
+
+def extend_master(iv: pd.DataFrame, tp: pd.DataFrame) -> pd.DataFrame:
+    """上場銘柄表の最後のスナップショットが、価格の最終日より前のとき（取得の時差）、最後のスナップショットまで上場していた銘柄の区間を、価格の最終日まで延ばす。
+    延ばさないと、価格の最終日に、全銘柄が「上場していない」扱いになり、最新日の判断・記録・診断ができない。"""
+    if iv.empty or tp.empty:
+        return iv
+    last_px, last_iv = pd.Timestamp(tp["date"].max()), iv["valid_to"].max()
+    if last_iv >= last_px:
+        return iv
+    iv = iv.copy()
+    iv.loc[iv["valid_to"] == last_iv, "valid_to"] = last_px
+    return iv
 
 
 def manifest_sha(root: Path) -> str:
