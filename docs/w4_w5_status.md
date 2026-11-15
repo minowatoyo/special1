@@ -143,3 +143,13 @@ powershell -ExecutionPolicy Bypass -File scripts\update_and_record.ps1    # 追�
 python scripts/w5/short_feasibility.py                                    # ストップ高の翌朝の空売りの、コスト・貸借・踏み上げの計算（--rt-cost 0.004 --borrow 0.0115 を、証券会社の条件に合わせて変更）
 ```
 初回の `update_and_record.ps1` は、追加取得が、取得済みの日をチェックポイントで飛ばすか確かめるため、出力を貼る。独立な記録は 21 営業日あけて数える。12 期たまるまで結論は出さない（S2 は 12 か月）。
+
+## 追加（2026-11-14）: 個別株の弾力性、気になった銘柄の診断と記録
+```
+python scripts/w5/elasticity_study.py                 # 約 5〜10 分。下げた後に戻る癖（3 定義 × 5・21 日 = 6 検定）。結果は results/elasticity/
+python scripts/w5/stock_profile.py --code 7203        # 気になった銘柄の診断（集計だけを画面に出す。1 件ごとの表は results/profile/<コード>.json にだけ）
+python scripts/w5/watchlist.py add --code 7203 --cause 一過性 --view 戻る --note "理由のメモ"   # 指定の記録（原因: 一過性/構造的/需給/連想/不明、予想: 戻る/戻らない）
+python scripts/w5/watchlist.py score                  # 22 営業日目の始値までそろったものを採点
+python scripts/w5/watchlist.py summary                # 原因の分類ごとの集計（12 件未満は結論を出さない）
+```
+仕様は docs/w5_protocol.md「個別株の弾力性の検証」「気になった銘柄の診断と、指定の前向きの記録」（事前固定）。
