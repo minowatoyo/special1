@@ -190,3 +190,12 @@ python scripts/w5/forward_events.py summary      # 集計（候補 30 件、指�
 
 ## 追加（2026-11-15）: TradingView の AI Agent Lens（表示・相談用）
 `tools/tradingview_ai_lens/`（上流 roan-maverick/tradingview-indicator-for-ai-agents、MIT、コミット f1aa6ce で固定）。使い方・安全な設定は `tools/tradingview_ai_lens/README.md`、レビューの記録は `REVIEW.md`、日本株の現物（買いのみ）向けのプロンプトは `AGENT_PROMPT_JP.md`。**指標の売買シグナルに、優位性は検証されていない**（テクニカルの規則は、約 100 検定で、確認期間まで残らなかった）。表示・相談用で、モデル・検証には入れない。
+
+## 追加（2026-11-15）: AI Agent Lens のシグナルの前向きの記録
+```
+python scripts/w5/lens_log.py add --kind packet --clip    # 画面のパケット（クリップボード）を記録
+python scripts/w5/lens_log.py add --kind signal --clip    # AI の出力（クリップボード）を記録（LONG・WAIT・SKIP のすべて）
+python scripts/w5/lens_log.py score                       # J-Quants の日足で採点（データ更新のあと）
+python scripts/w5/lens_log.py summary                     # 日足・分足 × LONG・WAIT・SKIP の集計
+```
+銘柄の一覧は、先に固定する。LONG が 30 件（区分ごと）たまるまで、結論を出さない。仕様は docs/w5_protocol.md。

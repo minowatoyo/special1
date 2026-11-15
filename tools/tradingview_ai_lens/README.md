@@ -22,3 +22,13 @@
 
 ## レビューの記録（2026-11-15）
 `REVIEW.md` を参照。
+
+## 前向きの記録（確定した使い方: 画面のパケットを貼る方式。日足と分足）
+仕様は `docs/w5_protocol.md`「TradingView AI Agent Lens のシグナルの前向きの記録」。
+1. **銘柄の一覧を、先に固定する**（例: 15 銘柄）。毎営業日の引け後に、**同じ一覧**を見る。目についた銘柄だけを記録しない（結果を知っている偏りが入る）。
+2. TradingView の画面で、パケットのプレビューをコピーする（指標の設定: Send JSON packet = Off、Show packet preview = ON）。
+3. `python scripts/w5/lens_log.py add --kind packet --clip` で、記録する。
+4. パケットを、`AGENT_PROMPT_JP.md` を設定した Claude に貼り、出力の JSON をコピーして、`python scripts/w5/lens_log.py add --kind signal --clip` で記録する。**LONG だけでなく、WAIT・SKIP も記録する。**
+5. データを更新したあと（`update_and_record.ps1`）に、`python scripts/w5/lens_log.py score` と `summary`。J-Quants の日足で、翌営業日の始値から、1・5・21 営業日後を採点する。
+- 分足のシグナルも、同じ規則で（翌営業日の始値から）採点する。分足の約定価格は、日足から分からないため。
+- LONG が、時間軸の区分ごとに 30 件たまるまで、結論を出さない。
