@@ -177,3 +177,13 @@ python scripts/w5/vol_matched_study.py         # 約 10 分。極端な出来事
 python scripts/w5/extreme_filter_study.py      # 約 5〜10 分。順位予測の上位 15 から、直近 5 営業日に極端な動きがあった銘柄を除くと良くなるか。結果は results/extreme_filter/
 ```
 仕様は docs/w5_protocol.md「極端な動きの回避フィルターと、ボラを合わせた比較」（事前固定）。`vol_matched_study.py` の `verdict_counts` と、`cells` の `verdict`（ボラでは説明できない／一部／ボラで説明される）を見る。
+
+## 追加（2026-11-15）: 指数レベルの逆張りと、日次の前向きの記録
+```
+git pull
+python scripts/w5/index_contrarian.py            # 1 分ほど。TOPIX 3 定義 × 5・21 日、33 業種 2 定義 × 5・21 日 = 10 検定。結果は results/index_contrarian/
+python scripts/w5/forward_events.py record       # データを更新するたびに（最新日の引け後）。信用売りの候補（紙の上）と、指数の状態を記録
+python scripts/w5/forward_events.py score        # 結果がそろったものを採点
+python scripts/w5/forward_events.py summary      # 集計（候補 30 件、指数 10 エピソード たまるまで、結論を出さない）
+```
+`update_and_record.ps1` に、`forward_events.py record/score/summary` を足してある。記録は、データの更新が毎日でなくてもよい（記録しなかった日は、結果と無関係に抜けるだけ）。実際の売買はしない（紙の上）。

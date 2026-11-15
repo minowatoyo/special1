@@ -242,3 +242,40 @@ def test_short_refinement_splits_by_short_balance_and_gyaku_hibu(tmp_path):
     (root / "processed" / "margin_interest.parquet").unlink()
     res2 = sf.main(root)
     assert res2["refinement"]["by_period"]["confirmation"]["by_short_balance"]["unknown"]["events"] > 0
+
+
+def test_forward_events_record_score_summary_with_forward_validity(tmp_path):
+    import forward_events as fe
+    P, codes, _ = seasonal_panel(n_codes=90, seed=41, turnover=1e8)
+    fins = _fins(P, codes)
+    n = len(P.dates)
+    t0 = n - 40                                                         # 記録する日
+    light = np.arange(90) < 28                                          # 売り残が軽い銘柄は、下位 1/3 に入る 28 銘柄。ほかは重い
+    for j in (0, 1, 50):                                                # 0・1: 軽い（候補）。50: 重い（候補外）
+        P.limit_up[t0, j] = True
+        P.adj_high[t0, j] = P.adj_close[t0, j]
+        P.adj_open[t0 + 6:, j] *= 0.94                                  # 5 日後に 6% 下がる
+    root = tmp_path / "jq"
+    _write_processed(root, P, codes)
+    _write_limits(root, P, codes)
+    iv = _iv(P, codes, {})
+    iv.loc[iv["code"] == codes[1], "margin_class"] = "1"               # 1 は貸借でない → 候補外
+    iv.to_parquet(root / "processed" / "listed_master.parquet", index=False)
+    fins.to_parquet(root / "processed" / "fins_summary.parquet", index=False)
+    idx = np.arange(300, n - 2, 5)
+    rows = [pd.DataFrame({"code": c, "date": P.dates[idx], "long_vol": 1e5, "short_vol": 1e4 if light[i] else 3e6, "usable_from": P.dates[idx + 1]}) for i, c in enumerate(codes)]
+    pd.concat(rows, ignore_index=True).to_parquet(root / "processed" / "margin_interest.parquet", index=False)
+    asof = str(P.dates[t0].date())
+    r = fe.record(root, asof)
+    assert r["status"] == "recorded" and r["limit_up_closes"] == 3 and r["candidates"] == 1                    # コード 0 だけ
+    assert fe.record(root, asof)["status"] == "already_recorded"                                                # 同じ日は、二重に記録しない
+    s0 = fe.summary(root)
+    assert s0["short_candidates"]["scored_ok"] == 0 and "結論を出さない" in s0["short_candidates"]["conclusion"]
+    sc = fe.score(root)
+    assert sc["scored_candidate_days"] == 1 and sc["scored_index_days"] == 1
+    assert fe.score(root)["scored_candidate_days"] == 0                                                          # 二重に採点しない
+    s = fe.summary(root)
+    assert s["short_candidates"]["scored_ok"] == 1 and s["short_candidates"]["mean_net_after_cost"] > 0.02
+    # 前向きの条件: 記録の後に、価格が壊れても、記録は変わらない
+    rec = [r for r in fe.AppendOnlyLedger(root / "ledger" / "forward_events.jsonl")._rows() if r["type"] == "fe_record"][0]["payload"]
+    assert [c["code"] for c in rec["candidates"]] == [codes[0]] and rec["asof"] == asof
