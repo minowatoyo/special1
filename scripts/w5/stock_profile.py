@@ -59,8 +59,8 @@ def disclosures(fins: pd.DataFrame, code: str, dates: pd.DatetimeIndex, n_days: 
     return out
 
 
-def snapshot(root: Path, code: str, asof: str | None = None) -> dict:
-    P, iv, fins = fs2.load_panel(root, asof)
+def snapshot(root: Path, code: str, asof: str | None = None, loaded: tuple | None = None) -> dict:
+    P, iv, fins = loaded or fs2.load_panel(root, asof)
     code = norm_code(code)
     if code not in P.codes:
         return {"code": code, "error": "価格データにない銘柄コード"}

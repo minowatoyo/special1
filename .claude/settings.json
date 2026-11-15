@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./data/jquants/**)",
+      "Read(./data/**)",
+      "Read(~/.jquants_key)",
+      "Read(~/.edinet_key)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  }
+}

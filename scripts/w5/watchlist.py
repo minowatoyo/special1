@@ -33,16 +33,23 @@ HORIZONS = (21, 63, 126)
 MIN_PER_CAUSE = 12
 
 
-def add(root: Path, code: str, cause: str, view: str, note: str = "", asof: str | None = None, typ: str = "未分類", check: str = "", exit_: str = "") -> dict:
+def add(root: Path, code: str, cause: str, view: str, note: str = "", asof: str | None = None, typ: str = "未分類", check: str = "", exit_: str = "",
+        dossier: str | None = None) -> dict:
     if cause not in CAUSES or view not in VIEWS or typ not in TYPES:
         raise SystemExit(f"原因は {CAUSES}、予想は {VIEWS}、型は {TYPES} のどれか")
     snap = sp.snapshot(root, code, asof)
     snap.pop("_detail", None)
     if "error" in snap:
         return snap
+    layers = None
+    if dossier:
+        dj = json.loads(Path(dossier).read_text(encoding="utf-8"))
+        if dj.get("code") != snap["code"] or dj.get("asof") != snap["asof"]:
+            return {"error": f"深掘りレポート（{dj.get('code')}、{dj.get('asof')}）が、記録する銘柄・日付（{snap['code']}、{snap['asof']}）と合わない。deep_dive.py を、実行し直す"}
+        layers = dj.get("layers")
     ledger = AppendOnlyLedger(root / "ledger" / "watchlist.jsonl")
     row = ledger.append_event("watch_add", {"code": snap["code"], "asof": snap["asof"], "cause": cause, "view": view, "type": typ, "check_when": check,
-                                           "exit_if": exit_, "note": note, "snapshot": snap})
+                                           "exit_if": exit_, "note": note, "layers": layers, "snapshot": snap})
     return {"recorded": True, "code": snap["code"], "asof": snap["asof"], "cause": cause, "view": view, "seq": row.get("seq"), "ledger": ledger.verify()}
 
 
@@ -98,6 +105,18 @@ def summary(root: Path) -> dict:
             x = np.array([o.get("excess", o.get("excess_21d")) for o in allout if o.get("type", "未分類") == ty and o.get("h", HOLD) == h], dtype=float)
             if len(x):
                 res["by_type_and_horizon"][ty][h] = {"n": int(len(x)), "mean_excess": round(float(x.mean()), 4), "share_positive": round(float((x > 0).mean()), 2)}
+    adds = {r["seq"]: r["payload"] for r in ledger._rows() if r["type"] == "watch_add"}
+    res["by_layer"] = {}
+    for key in ("red_flag", "distress", "outside_21d_sign", "lens_daily", "lens_intraday", "agents", "s2_candidate", "sel_top15"):
+        g = {}
+        for o in allout:
+            lay = (adds.get(o["add_seq"]) or {}).get("layers")
+            if not lay or lay.get(key) is None:
+                continue
+            g.setdefault(str(lay[key]), {}).setdefault(o.get("h", HOLD), []).append(o.get("excess", o.get("excess_21d")))
+        if g:
+            res["by_layer"][key] = {v: {h: {"n": len(x), "mean_excess": round(float(np.mean(x)), 4), "share_positive": round(float(np.mean(np.array(x) > 0)), 2),
+                                            "conclusion": "12 件未満。結論を出さない" if len(x) < MIN_PER_CAUSE else "12 件以上"} for h, x in sorted(hs.items())} for v, hs in sorted(g.items())}
     hit = [(o["view"] == "戻る") == (o["excess_21d"] > 0) for o in out]
     res["view_hit_rate"] = round(float(np.mean(hit)), 2) if hit else None
     res["ledger"] = ledger.verify()
@@ -116,12 +135,13 @@ if __name__ == "__main__":
     ap.add_argument("--type", default="未分類", help="需給反発 / 業績回復 / 期待修正 / 経営改革")
     ap.add_argument("--check", default="", help="確認時期（例: 2027-02 の 3Q 決算）")
     ap.add_argument("--exit", default="", help="反証条件（何が出たら撤回するか）")
+    ap.add_argument("--dossier", default=None, help="deep_dive.py の出力（JSON）。各層の値を、一緒に記録する")
     a = ap.parse_args()
     root = Path(a.root)
     if a.cmd == "add":
         if not (a.code and a.cause and a.view):
             sys.exit("--code --cause --view が必要")
-        r = add(root, a.code, a.cause, a.view, a.note, a.asof, a.type, a.check, a.exit)
+        r = add(root, a.code, a.cause, a.view, a.note, a.asof, a.type, a.check, a.exit, a.dossier)
     else:
         r = score(root) if a.cmd == "score" else summary(root)
     print(json.dumps(r, ensure_ascii=False, indent=1, default=float))

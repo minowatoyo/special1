@@ -270,3 +270,41 @@ def dedupe(obs: dict, base: np.ndarray, ordered: list, keep: int, overlap: float
             if len(chosen) >= keep:
                 break
     return chosen
+
+
+CORE_FEATURES = ("liquidity", "market", "ret21", "drawdown", "trend", "vol", "value", "roe", "margin", "revision", "ret126", "price")
+
+
+def codes_at(P, elig_row: np.ndarray, iv: pd.DataFrame, fins: pd.DataFrame, mg: pd.DataFrame | None, T: int) -> dict:
+    """日 T の、全銘柄の条件の符号（build_obs と同じ区切り）。3 分位は、その日の対象銘柄（elig_row）で決める。
+    build_obs は、結果のある銘柄だけで 3 分位を決めるので、境界がわずかに違うことがある（最新日には、結果がないため）。"""
+    chart = feat.chart_features(P, [T])
+    fins_f = feat.fins_features(P, fins, [T])
+    c = pd.DataFrame(P.adj_close)
+    sma75 = c.rolling(75, min_periods=60).mean().to_numpy()[T]
+    va = P.va60()[T]
+    m = elig_row
+    marg = None
+    if mg is not None and len(mg):
+        mv = mg_mod.margin_values(P, mg)
+        to20 = pd.DataFrame(P.turnover).fillna(0.0).rolling(20, min_periods=15).mean().to_numpy()[T]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            marg = mv["long_vol"][T] * P.raw_close[T] / np.where(to20 > 0, to20, np.nan)
+    mkt = interval_attr(P, iv, [T], "market")[0]
+    rv = np.nan_to_num(fins_f["rev_np"][0])
+    with np.errstate(invalid="ignore"):
+        out = {"liquidity": np.where(va >= 5e8, 0, np.where(va >= 5e7, 1, 2)).astype(np.int8),
+               "price": _digitize(P.raw_close[T], [300, 1000, 3000]),
+               "drawdown": (3 - _digitize(chart["near_high"][0] - 1, [-0.5, -0.3, -0.1])).astype(np.int8),
+               "ret21": _digitize(chart["ret21"][0], [-0.15, -0.05, 0.05, 0.15]),
+               "ret126": _digitize(chart["ret126"][0], [-0.25, 0.0, 0.25]),
+               "vol": _tertile(chart["vol60"][0], m, False),
+               "value": _tertile(fins_f["earn_yield"][0], m, True),
+               "revision": np.where(rv > 0, 0, np.where(rv < 0, 1, 2)).astype(np.int8),
+               "roe": _tertile(fins_f["roe"][0], m, True),
+               "margin": _tertile(marg, m, True) if marg is not None else np.full(len(P.codes), 3, np.int8),
+               "trend": np.where(P.adj_close[T] > sma75, 0, 1).astype(np.int8),
+               "market": np.array([MARKET_CODE.get(x, 3) for x in mkt], dtype=np.int8)}
+    out["_valid"] = {"ret21": np.isfinite(chart["ret21"][0]), "ret126": np.isfinite(chart["ret126"][0]), "drawdown": np.isfinite(chart["near_high"][0]),
+                     "vol": np.isfinite(chart["vol60"][0]), "trend": np.isfinite(sma75) & np.isfinite(P.adj_close[T]), "price": np.isfinite(P.raw_close[T]), "liquidity": np.isfinite(va)}
+    return out
