@@ -187,3 +187,6 @@ python scripts/w5/forward_events.py score        # 結果がそろったもの�
 python scripts/w5/forward_events.py summary      # 集計（候補 30 件、指数 10 エピソード たまるまで、結論を出さない）
 ```
 `update_and_record.ps1` に、`forward_events.py record/score/summary` を足してある。記録は、データの更新が毎日でなくてもよい（記録しなかった日は、結果と無関係に抜けるだけ）。実際の売買はしない（紙の上）。
+
+## 追加（2026-11-15）: TradingView の AI Agent Lens（表示・相談用）
+`tools/tradingview_ai_lens/`（上流 roan-maverick/tradingview-indicator-for-ai-agents、MIT、コミット f1aa6ce で固定）。使い方・安全な設定は `tools/tradingview_ai_lens/README.md`、レビューの記録は `REVIEW.md`、日本株の現物（買いのみ）向けのプロンプトは `AGENT_PROMPT_JP.md`。**指標の売買シグナルに、優位性は検証されていない**（テクニカルの規則は、約 100 検定で、確認期間まで残らなかった）。表示・相談用で、モデル・検証には入れない。

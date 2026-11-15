@@ -3,3 +3,6 @@ data/jquants/
 *.parquet
 __pycache__/
 .pytest_cache/
+
+# TradingView AI Agent Lens: 受信したパケット（手元のデータ。Git の対象外）
+tools/tradingview_ai_lens/packets/
